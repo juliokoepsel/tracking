@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Fabric Network
+fabric-network/organizations/peerOrganizations/
+fabric-network/organizations/ordererOrganizations/
+fabric-network/channel-artifacts/
+fabric-network/system-genesis-block/
+*.tar.gz
+*.block
+*.tx
+
+# Wallets and Credentials
+wallet/
+*.id
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
+
+# Environment variables (keep template, ignore local)
+.env
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/

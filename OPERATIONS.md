@@ -1,4 +1,4 @@
-# Quick Reference Card
+# Operations Guide
 
 ## 🚀 Getting Started (3 Steps)
 
@@ -294,6 +294,171 @@ make test
 
 # View result
 curl http://localhost:8000/api/v1/deliveries/TEST001
+```
+
+---
+
+## Testing the System
+
+### Initialize Ledger (Optional)
+
+The chaincode includes an `InitLedger` function that creates sample data. To invoke it:
+
+```bash
+docker exec cli peer chaincode invoke \
+  -o orderer.example.com:7050 \
+  -C deliverychannel \
+  -n delivery \
+  -c '{"function":"InitLedger","Args":[]}' \
+  --waitForEvent
+```
+
+### Create a Test Delivery
+
+```bash
+curl -X POST http://localhost:8000/api/v1/deliveries \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deliveryId": "DEL100",
+    "senderName": "Test Sender",
+    "senderAddress": "123 Test St, Test City, TC 12345",
+    "recipientName": "Test Recipient",
+    "recipientAddress": "456 Test Ave, Test City, TC 12345",
+    "packageWeight": 2.5,
+    "packageDimensions": {
+      "length": 30.0,
+      "width": 20.0,
+      "height": 15.0
+    },
+    "packageDescription": "Test Package",
+    "estimatedDeliveryDate": "2025-10-20T10:00:00Z"
+  }'
+```
+
+### Retrieve the Delivery
+
+```bash
+curl http://localhost:8000/api/v1/deliveries/DEL100
+```
+
+### Get All Deliveries
+
+```bash
+curl http://localhost:8000/api/v1/deliveries
+```
+
+### Update Delivery Status
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/deliveries/DEL100 \
+  -H "Content-Type: application/json" \
+  -d '{"deliveryStatus": "IN_TRANSIT"}'
+```
+
+### View More Examples
+
+```bash
+./api/examples.sh
+```
+
+## Monitoring
+
+### View Container Status
+
+```bash
+docker-compose ps
+```
+
+### View Logs
+
+**API logs:**
+```bash
+docker-compose logs -f api
+```
+
+**Peer logs:**
+```bash
+docker-compose logs -f peer0.delivery.example.com
+```
+
+**Orderer logs:**
+```bash
+docker-compose logs -f orderer.example.com
+```
+
+**All logs:**
+```bash
+docker-compose logs -f
+```
+
+### Check Container Resources
+
+```bash
+docker stats
+```
+
+## Common Operations
+
+### Restart the API Service
+
+```bash
+docker-compose restart api
+```
+
+### Rebuild the API Service
+
+```bash
+docker-compose up -d --build api
+```
+
+### Stop All Services
+
+```bash
+docker-compose down
+```
+
+### Stop and Remove All Data
+
+```bash
+docker-compose down -v
+./fabric-network/scripts/cleanup.sh
+```
+
+## General Debugging Commands
+
+### View all container logs
+```bash
+make logs
+```
+
+### Check container status
+```bash
+make status
+```
+
+### Verify system health
+```bash
+make health
+```
+
+### Test basic functionality
+```bash
+make test
+```
+
+### Get network information
+```bash
+make network-info
+```
+
+### Open shell in CLI container
+```bash
+make shell-cli
+```
+
+### Open shell in API container
+```bash
+make shell-api
 ```
 
 ---

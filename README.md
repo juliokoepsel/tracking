@@ -212,6 +212,16 @@ docker-compose logs -f peer0.delivery.example.com
 - TLS enabled for peer-to-peer communication
 - Admin credentials stored in .env file (change in production)
 
+## 📚 Documentation Map
+
+- **README.md** - Overview, quick start, and project structure
+- **ARCHITECTURE.md** - System design, components, and data flows
+- **DEPLOYMENT.md** - Step-by-step deployment and configuration
+- **OPERATIONS.md** - Commands, workflows, and common tasks
+- **TROUBLESHOOTING.md** - Deep-dive issue resolution
+- **STRUCTURE.generated.md** - Auto-generated file tree and statistics
+- **METRICS.generated.md** - Auto-generated project metrics
+
 ## 📝 License
 
 MIT License

@@ -327,53 +327,7 @@ services:
 | Database (State) | LevelDB | Fabric default |
 | API Documentation | OpenAPI/Swagger | 3.0 |
 
-### File Structure
 
-```
-tracking/
-├── .env                              # Environment configuration
-├── .gitignore                        # Git ignore rules
-├── docker-compose.yml                # Container orchestration
-├── Makefile                          # Convenience commands
-├── README.md                         # Project overview
-├── DEPLOYMENT.md                     # Deployment guide
-├── TROUBLESHOOTING.md                # Troubleshooting guide
-├── ARCHITECTURE.md                   # This file
-│
-├── fabric-network/                   # Fabric network configuration
-│   ├── config/
-│   │   ├── configtx.yaml            # Channel configuration
-│   │   └── crypto-config.yaml       # Crypto material generation
-│   ├── scripts/
-│   │   ├── start-network.sh         # Network startup script
-│   │   ├── deploy-chaincode.sh      # Chaincode deployment
-│   │   └── cleanup.sh               # Cleanup script
-│   ├── organizations/               # Generated crypto material
-│   ├── channel-artifacts/           # Generated channel artifacts
-│   └── system-genesis-block/        # Genesis block
-│
-├── chaincode/                        # Smart contracts
-│   └── delivery/
-│       ├── main.go                   # Chaincode entry point
-│       ├── delivery.go               # Business logic
-│       └── go.mod                    # Go dependencies
-│
-└── api/                              # FastAPI service
-    ├── Dockerfile                    # API container image
-    ├── requirements.txt              # Python dependencies
-    ├── main.py                       # API entry point
-    ├── connection-profile.json       # Fabric connection config
-    ├── examples.sh                   # API usage examples
-    ├── postman-collection.json       # Postman test collection
-    └── app/
-        ├── __init__.py
-        ├── models/
-        │   └── delivery.py           # Pydantic models
-        ├── routes/
-        │   └── delivery.py           # API endpoints
-        └── services/
-            └── fabric_client.py      # Fabric SDK client
-```
 
 ### Design Patterns Used
 
@@ -395,15 +349,4 @@ tracking/
 ✓ **Containerized**: Portable and reproducible
 ✓ **Scalable**: Can add more peers and organizations
 
-### Future Enhancements
 
-- [ ] Multi-organization setup
-- [ ] Raft consensus for orderers
-- [ ] TLS/SSL encryption
-- [ ] User authentication and authorization
-- [ ] Event-driven notifications
-- [ ] Advanced querying with CouchDB
-- [ ] Performance metrics and monitoring
-- [ ] Automated testing suite
-- [ ] CI/CD pipeline
-- [ ] Kubernetes deployment

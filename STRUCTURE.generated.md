@@ -1,0 +1,180 @@
+# Project Structure
+
+```
+.
+api
+  app
+    models
+      __pycache__
+    __pycache__
+    routes
+      __pycache__
+    services
+      __pycache__
+  organizations
+  __pycache__
+chaincode
+  delivery
+fabric-network
+  channel-artifacts
+  config
+  organizations
+    ordererOrganizations
+      example.com
+        ca
+        msp
+          admincerts
+          cacerts
+          tlscacerts
+        orderers
+          orderer.example.com
+            msp
+              admincerts
+              cacerts
+              keystore
+              signcerts
+              tlscacerts
+            tls
+        tlsca
+        users
+          Admin@example.com
+            msp
+              admincerts
+              cacerts
+              keystore
+              signcerts
+              tlscacerts
+            tls
+    peerOrganizations
+      delivery.example.com
+        ca
+        msp
+          admincerts
+          cacerts
+          tlscacerts
+        peers
+          peer0.delivery.example.com
+            msp
+              admincerts
+              cacerts
+              keystore
+              signcerts
+              tlscacerts
+            tls
+        tlsca
+        users
+          Admin@delivery.example.com
+            msp
+              admincerts
+              cacerts
+              keystore
+              signcerts
+              tlscacerts
+            tls
+          User1@delivery.example.com
+            msp
+              admincerts
+              cacerts
+              keystore
+              signcerts
+              tlscacerts
+            tls
+  scripts
+  system-genesis-block
+    __init__.py
+      delivery.py
+        delivery.cpython-311.pyc
+      __init__.cpython-311.pyc
+      delivery.py
+        delivery.cpython-311.pyc
+      fabric_client.py
+        fabric_client.cpython-311.pyc
+  connection-profile.json
+  Dockerfile
+  .dockerignore
+  examples.sh
+  main.py
+  postman-collection.json
+    main.cpython-311.pyc
+  requirements.txt
+ARCHITECTURE.md
+BANNER.txt
+    delivery.go
+    go.mod
+    go.sum
+    main.go
+DEPLOYMENT.md
+docker-compose.yml
+.env
+.env-example
+    deliverychannel.block
+    deliverychannel.tx
+    DeliveryOrgMSPanchors.tx
+    configtx.yaml
+    crypto-config.yaml
+          ca.example.com-cert.pem
+          priv_sk
+            ca.example.com-cert.pem
+          config.yaml
+            tlsca.example.com-cert.pem
+                ca.example.com-cert.pem
+              config.yaml
+                priv_sk
+                orderer.example.com-cert.pem
+                tlsca.example.com-cert.pem
+              ca.crt
+              server.crt
+              server.key
+          priv_sk
+          tlsca.example.com-cert.pem
+                ca.example.com-cert.pem
+              config.yaml
+                priv_sk
+                Admin@example.com-cert.pem
+                tlsca.example.com-cert.pem
+              ca.crt
+              client.crt
+              client.key
+          ca.delivery.example.com-cert.pem
+          priv_sk
+            ca.delivery.example.com-cert.pem
+          config.yaml
+            tlsca.delivery.example.com-cert.pem
+                ca.delivery.example.com-cert.pem
+              config.yaml
+                priv_sk
+                peer0.delivery.example.com-cert.pem
+                tlsca.delivery.example.com-cert.pem
+              ca.crt
+              server.crt
+              server.key
+          priv_sk
+          tlsca.delivery.example.com-cert.pem
+                ca.delivery.example.com-cert.pem
+              config.yaml
+                priv_sk
+                Admin@delivery.example.com-cert.pem
+                tlsca.delivery.example.com-cert.pem
+              ca.crt
+              client.crt
+              client.key
+                ca.delivery.example.com-cert.pem
+              config.yaml
+                priv_sk
+                User1@delivery.example.com-cert.pem
+                tlsca.delivery.example.com-cert.pem
+              ca.crt
+              client.crt
+              client.key
+    cleanup.sh
+    deploy-chaincode.sh
+    start-network.sh
+    genesis.block
+generate_docs.sh
+Makefile
+METRICS.generated.md
+OPERATIONS.md
+README.md
+STRUCTURE.generated.md
+TROUBLESHOOTING.md
+```

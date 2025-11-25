@@ -1,4 +1,20 @@
 #!/bin/bash
+set -e
+
+# Reusable helper: count files & lines for given find predicates
+count_lines() {
+	local label="$1"; shift
+	# Build the base find with exclusions
+	local base=(find . "$@" -not -path './.git/*' -not -path './__pycache__/*' -not -path './node_modules/*')
+	local files lines
+	files=$("${base[@]}" | wc -l)
+	if [ "$files" -eq 0 ]; then
+		lines=0
+	else
+		lines=$("${base[@]}" -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
+	fi
+	echo "| $label | $files | $lines |" >> METRICS.generated.md
+}
 
 # Generate STRUCTURE.generated.md
 echo "# Project Structure" > STRUCTURE.generated.md
@@ -63,40 +79,13 @@ echo "" >> METRICS.generated.md
 echo "| Language | Files | Lines |" >> METRICS.generated.md
 echo "|----------|-------|-------|" >> METRICS.generated.md
 
-# Go
-GO_FILES=$(find . -name '*.go' -not -path './.git/*' | wc -l)
-GO_LINES=$(find . -name '*.go' -not -path './.git/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| Go | $GO_FILES | $GO_LINES |" >> METRICS.generated.md
-
-# Python
-PY_FILES=$(find . -name '*.py' -not -path './.git/*' -not -path './__pycache__/*' | wc -l)
-PY_LINES=$(find . -name '*.py' -not -path './.git/*' -not -path './__pycache__/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| Python | $PY_FILES | $PY_LINES |" >> METRICS.generated.md
-
-# YAML
-YAML_FILES=$(find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' | wc -l)
-YAML_LINES=$(find . \( -name '*.yaml' -o -name '*.yml' \) -not -path './.git/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| YAML | $YAML_FILES | $YAML_LINES |" >> METRICS.generated.md
-
-# JSON
-JSON_FILES=$(find . -name '*.json' -not -path './.git/*' | wc -l)
-JSON_LINES=$(find . -name '*.json' -not -path './.git/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| JSON | $JSON_FILES | $JSON_LINES |" >> METRICS.generated.md
-
-# Markdown
-MD_FILES=$(find . -name '*.md' -not -path './.git/*' | wc -l)
-MD_LINES=$(find . -name '*.md' -not -path './.git/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| Markdown | $MD_FILES | $MD_LINES |" >> METRICS.generated.md
-
-# Shell
-SH_FILES=$(find . -name '*.sh' -not -path './.git/*' | wc -l)
-SH_LINES=$(find . -name '*.sh' -not -path './.git/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| Shell | $SH_FILES | $SH_LINES |" >> METRICS.generated.md
-
-# Dockerfile
-DOCKER_FILES=$(find . -name 'Dockerfile*' -not -path './.git/*' | wc -l)
-DOCKER_LINES=$(find . -name 'Dockerfile*' -not -path './.git/*' -exec wc -l {} \; | awk '{sum += $1} END {print sum+0}')
-echo "| Dockerfile | $DOCKER_FILES | $DOCKER_LINES |" >> METRICS.generated.md
+count_lines "Go" -name '*.go'
+count_lines "Python" -name '*.py'
+count_lines "YAML" \( -name '*.yaml' -o -name '*.yml' \)
+count_lines "JSON" -name '*.json'
+count_lines "Markdown" -name '*.md'
+count_lines "Shell" -name '*.sh'
+count_lines "Dockerfile" -name 'Dockerfile*'
 
 echo "" >> METRICS.generated.md
 echo "*Generated on $(date)*" >> METRICS.generated.md

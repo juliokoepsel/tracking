@@ -30,7 +30,7 @@
 | YAML | 10 | 409 |
 | JSON | 2 | 332 |
 | Markdown | 7 | 2129 |
-| Shell | 5 | 573 |
+| Shell | 5 | 562 |
 | Dockerfile | 1 | 32 |
 
-*Generated on Tue Nov 25 05:13:33 AM -03 2025*
+*Generated on Tue Nov 25 05:21:59 AM -03 2025*

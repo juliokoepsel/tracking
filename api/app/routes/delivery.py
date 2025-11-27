@@ -2,26 +2,31 @@
 Delivery API Routes
 Handles all CRUD operations for package deliveries
 """
-from fastapi import APIRouter, HTTPException, status
-from typing import List
+from fastapi import APIRouter, HTTPException, status, Depends
 import logging
 
 from app.models.delivery import (
-    Delivery,
     DeliveryCreate,
     DeliveryUpdate,
     DeliveryResponse,
     DeliveryListResponse,
     DeliveryStatus
 )
+from app.models.user import User
+from app.models.enums import UserRole
 from app.services.fabric_client import fabric_client
+from app.services.auth import get_current_user, require_roles
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/deliveries",
     tags=["deliveries"],
-    responses={404: {"description": "Not found"}},
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Not authorized"},
+        404: {"description": "Not found"},
+    },
 )
 
 
@@ -30,9 +35,12 @@ router = APIRouter(
     response_model=DeliveryResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new delivery",
-    description="Create a new package delivery record on the blockchain"
+    description="Create a new package delivery record on the blockchain. Sellers and Admins only."
 )
-async def create_delivery(delivery: DeliveryCreate):
+async def create_delivery(
+    delivery: DeliveryCreate,
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
+):
     """
     Create a new delivery with the following information:
     
@@ -47,11 +55,22 @@ async def create_delivery(delivery: DeliveryCreate):
     - **estimatedDeliveryDate**: Expected delivery date (ISO 8601 format)
     """
     try:
-        # Convert to dict for fabric client
-        delivery_dict = delivery.model_dump()
-        
-        # Invoke chaincode
-        result = fabric_client.create_delivery(delivery_dict)
+        # Invoke chaincode with ownership
+        result = fabric_client.create_delivery(
+            tracking_id=delivery.deliveryId,
+            sender_name=delivery.senderName,
+            sender_address=delivery.senderAddress,
+            recipient_name=delivery.recipientName,
+            recipient_address=delivery.recipientAddress,
+            package_weight=delivery.packageWeight,
+            dimension_length=delivery.packageDimensions.length,
+            dimension_width=delivery.packageDimensions.width,
+            dimension_height=delivery.packageDimensions.height,
+            package_description=delivery.packageDescription,
+            estimated_delivery_date=delivery.estimatedDeliveryDate,
+            owner_id=str(current_user.id),
+            owner_role=current_user.role.value
+        )
         
         if not result.get("success"):
             raise HTTPException(
@@ -88,9 +107,12 @@ async def create_delivery(delivery: DeliveryCreate):
     "/{delivery_id}",
     response_model=DeliveryResponse,
     summary="Get delivery by ID",
-    description="Retrieve a specific delivery by its ID from the blockchain"
+    description="Retrieve a specific delivery by its ID from the blockchain. Requires authentication."
 )
-async def get_delivery(delivery_id: str):
+async def get_delivery(
+    delivery_id: str,
+    current_user: User = Depends(get_current_user)
+):
     """
     Retrieve a delivery by its ID.
     
@@ -125,9 +147,11 @@ async def get_delivery(delivery_id: str):
     "",
     response_model=DeliveryListResponse,
     summary="Get all deliveries",
-    description="Retrieve all deliveries from the blockchain"
+    description="Retrieve all deliveries from the blockchain. Requires authentication."
 )
-async def get_all_deliveries():
+async def get_all_deliveries(
+    current_user: User = Depends(get_current_user)
+):
     """
     Retrieve all deliveries stored on the blockchain.
     """
@@ -163,9 +187,13 @@ async def get_all_deliveries():
     "/{delivery_id}",
     response_model=DeliveryResponse,
     summary="Update delivery",
-    description="Update delivery information on the blockchain"
+    description="Update delivery information on the blockchain. Sellers, Delivery Personnel, and Admins only."
 )
-async def update_delivery(delivery_id: str, delivery_update: DeliveryUpdate):
+async def update_delivery(
+    delivery_id: str, 
+    delivery_update: DeliveryUpdate,
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.ADMIN))
+):
     """
     Update a delivery's information.
     
@@ -182,11 +210,13 @@ async def update_delivery(delivery_id: str, delivery_update: DeliveryUpdate):
                 detail=f"Delivery {delivery_id} not found"
             )
         
-        # Update delivery
-        result = fabric_client.update_delivery(
+        # Update delivery with ownership verification
+        result = fabric_client.update_delivery_with_ownership(
             delivery_id,
             recipient_address=delivery_update.recipientAddress or "",
-            delivery_status=delivery_update.deliveryStatus.value if delivery_update.deliveryStatus else ""
+            delivery_status=delivery_update.deliveryStatus.value if delivery_update.deliveryStatus else "",
+            caller_id=str(current_user.id),
+            caller_role=current_user.role.value
         )
         
         if not result.get("success"):
@@ -218,9 +248,12 @@ async def update_delivery(delivery_id: str, delivery_update: DeliveryUpdate):
     "/{delivery_id}",
     response_model=DeliveryResponse,
     summary="Delete delivery",
-    description="Mark a delivery as canceled on the blockchain"
+    description="Mark a delivery as canceled on the blockchain. Sellers and Admins only."
 )
-async def delete_delivery(delivery_id: str):
+async def delete_delivery(
+    delivery_id: str,
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
+):
     """
     Delete (cancel) a delivery. This performs a soft delete by marking 
     the delivery as CANCELED.
@@ -236,8 +269,12 @@ async def delete_delivery(delivery_id: str):
                 detail=f"Delivery {delivery_id} not found"
             )
         
-        # Delete (cancel) delivery
-        result = fabric_client.delete_delivery(delivery_id)
+        # Delete (cancel) delivery with ownership verification
+        result = fabric_client.delete_delivery_with_ownership(
+            delivery_id,
+            caller_id=str(current_user.id),
+            caller_role=current_user.role.value
+        )
         
         if not result.get("success"):
             raise HTTPException(
@@ -268,9 +305,12 @@ async def delete_delivery(delivery_id: str):
     "/status/{delivery_status}",
     response_model=DeliveryListResponse,
     summary="Get deliveries by status",
-    description="Retrieve all deliveries with a specific status"
+    description="Retrieve all deliveries with a specific status. Requires authentication."
 )
-async def get_deliveries_by_status(delivery_status: DeliveryStatus):
+async def get_deliveries_by_status(
+    delivery_status: DeliveryStatus,
+    current_user: User = Depends(get_current_user)
+):
     """
     Retrieve all deliveries with a specific status.
     
@@ -307,9 +347,12 @@ async def get_deliveries_by_status(delivery_status: DeliveryStatus):
 @router.get(
     "/{delivery_id}/history",
     summary="Get delivery history",
-    description="Retrieve the complete history of a delivery from the blockchain"
+    description="Retrieve the complete history of a delivery from the blockchain. Requires authentication."
 )
-async def get_delivery_history(delivery_id: str):
+async def get_delivery_history(
+    delivery_id: str,
+    current_user: User = Depends(get_current_user)
+):
     """
     Retrieve the complete transaction history of a delivery.
     

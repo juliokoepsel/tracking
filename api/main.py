@@ -2,13 +2,16 @@
 FastAPI Application - Package Delivery Tracking System
 Main entry point for the API service
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
 import os
 
-from app.routes import delivery
+from app.routes import delivery, users, orders, custody
+from app.services.database import init_db, close_db
+from app.services.fabric_client import fabric_client
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +22,30 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events
+    """
+    # Startup
+    logger.info("Starting Package Delivery Tracking API")
+    logger.info(f"Channel: {os.getenv('CHANNEL_NAME', 'deliverychannel')}")
+    logger.info(f"Chaincode: {os.getenv('CHAINCODE_NAME', 'delivery')}")
+    
+    # Initialize MongoDB connection
+    await init_db()
+    logger.info("MongoDB connection initialized")
+    logger.info("API is ready to accept requests")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Package Delivery Tracking API")
+    await close_db()
+    logger.info("MongoDB connection closed")
+
 
 # Create FastAPI application
 app = FastAPI(
@@ -34,14 +61,34 @@ app = FastAPI(
     * **Query History**: View complete transaction history for each delivery
     * **Immutable Records**: All data stored on Hyperledger Fabric blockchain
     
-    ## Delivery Status
+    ## Authentication
     
-    - **PENDING**: Delivery has been created but not yet dispatched
-    - **IN_TRANSIT**: Package is currently being transported
-    - **DELIVERED**: Package has been successfully delivered
-    - **CANCELED**: Delivery has been canceled
+    This API uses HTTP Basic Authentication. Include your username and password
+    in the request headers.
+    
+    ## User Roles
+    
+    - **ADMIN**: Full system access, user management
+    - **SELLER**: Create orders, manage own deliveries
+    - **DELIVERY_PERSON**: Update delivery status, handle handoffs
+    - **CUSTOMER**: View own orders, confirm delivery
+    
+    ## Delivery Status Flow
+    
+    1. **PENDING_SHIPPING**: Order created by seller
+    2. **PENDING_PICKUP**: Awaiting delivery person pickup
+    3. **IN_TRANSIT**: Package being transported
+    4. **PENDING_DELIVERY_CONFIRMATION**: Awaiting customer confirmation
+    5. **CONFIRMED_DELIVERY**: Customer confirmed receipt
+    
+    ## Chain of Custody
+    
+    All custody transfers require both parties to confirm the handoff:
+    - Seller → Delivery Person (pickup)
+    - Delivery Person → Delivery Person (transit handoff)
+    - Delivery Person → Customer (final delivery)
     """,
-    version="1.0.0",
+    version="2.0.0",
     contact={
         "name": "Delivery Tracking System",
         "email": "support@deliverytracking.com",
@@ -50,6 +97,7 @@ app = FastAPI(
         "name": "MIT License",
         "url": "https://opensource.org/licenses/MIT",
     },
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -63,6 +111,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(delivery.router)
+app.include_router(users.router)
+app.include_router(orders.router)
+app.include_router(custody.router)
 
 
 @app.get("/", tags=["health"])
@@ -73,8 +124,10 @@ async def root():
     return {
         "status": "online",
         "service": "Package Delivery Tracking System",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "blockchain": "Hyperledger Fabric",
+        "database": "MongoDB",
+        "auth": "HTTP Basic Auth",
         "docs": "/docs",
         "redoc": "/redoc"
     }
@@ -83,32 +136,36 @@ async def root():
 @app.get("/health", tags=["health"])
 async def health_check():
     """
-    Health check endpoint
+    Health check endpoint with actual connectivity verification
     """
+    # Check MongoDB connectivity
+    db_connected = False
+    try:
+        from app.models.user import User
+        # Try to count users to verify DB connection
+        await User.find().limit(1).to_list()
+        db_connected = True
+    except Exception as e:
+        logger.warning(f"MongoDB health check failed: {str(e)}")
+        db_connected = False
+    
+    # Check blockchain connectivity
+    blockchain_connected = False
+    try:
+        result = fabric_client.ping_blockchain()
+        blockchain_connected = result.get("success", False)
+    except Exception as e:
+        logger.warning(f"Blockchain health check failed: {str(e)}")
+        blockchain_connected = False
+    
+    overall_status = "healthy" if db_connected and blockchain_connected else "degraded"
+    
     return {
-        "status": "healthy",
+        "status": overall_status,
         "service": "api",
-        "blockchain_connected": True  # TODO: Add actual connectivity check
+        "blockchain_connected": blockchain_connected,
+        "database_connected": db_connected
     }
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Startup event handler
-    """
-    logger.info("Starting Package Delivery Tracking API")
-    logger.info(f"Channel: {os.getenv('CHANNEL_NAME', 'deliverychannel')}")
-    logger.info(f"Chaincode: {os.getenv('CHAINCODE_NAME', 'delivery')}")
-    logger.info("API is ready to accept requests")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Shutdown event handler
-    """
-    logger.info("Shutting down Package Delivery Tracking API")
 
 
 if __name__ == "__main__":

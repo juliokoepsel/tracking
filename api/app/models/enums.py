@@ -18,16 +18,18 @@ class DeliveryStatus(str, Enum):
     Delivery status states following the chain of custody model.
     
     Flow:
-    PENDING_SHIPPING -> PENDING_PICKUP -> IN_TRANSIT -> PENDING_DELIVERY_CONFIRMATION -> CONFIRMED_DELIVERY
+    PENDING_CONFIRMATION -> PENDING_PICKUP -> IN_TRANSIT -> PENDING_DELIVERY_CONFIRMATION -> CONFIRMED_DELIVERY
     
     Dispute states can occur at handoff points:
     - DISPUTED_PICKUP: Driver refuses to accept package from seller
     - DISPUTED_TRANSIT_HANDOFF: Next driver refuses package from current driver
     - DISPUTED_DELIVERY: Customer disputes the delivery
     """
+    # Order states (before delivery exists on blockchain)
+    PENDING_CONFIRMATION = "PENDING_CONFIRMATION"   # Customer created order, awaiting seller confirmation
+    
     # Pre-transit states
-    PENDING_SHIPPING = "PENDING_SHIPPING"           # Order paid, seller preparing
-    PENDING_PICKUP = "PENDING_PICKUP"               # Seller ready, awaiting driver
+    PENDING_PICKUP = "PENDING_PICKUP"               # Seller confirmed, awaiting driver pickup
     DISPUTED_PICKUP = "DISPUTED_PICKUP"             # Driver refused pickup
     
     # Transit states

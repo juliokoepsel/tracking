@@ -65,35 +65,22 @@ status: ## Show status of all containers
 	@printf "$(GREEN)Docker Resources:$(NC)\n"
 	@docker stats --no-stream
 
-init-ledger: ## Initialize the ledger with sample data
-	@printf "$(YELLOW)Initializing ledger with sample data...$(NC)\n"
-	@docker exec cli peer chaincode invoke \
-		-o orderer.example.com:7050 \
-		-C deliverychannel \
-		-n delivery \
-		-c '{"function":"InitLedger","Args":[]}' \
-		--waitForEvent
-	@printf "$(GREEN)Ledger initialized!$(NC)\n"
-
-test: ## Run a test delivery creation
-	@printf "$(YELLOW)Creating test delivery...$(NC)\n"
-	@curl -X POST http://localhost:8000/api/v1/deliveries \
-		-H "Content-Type: application/json" \
-		-d '{"deliveryId":"TEST001","senderName":"Test Sender","senderAddress":"123 Test St, Test City, TC 12345","recipientName":"Test Recipient","recipientAddress":"456 Test Ave, Test City, TC 12345","packageWeight":2.5,"packageDimensions":{"length":30.0,"width":20.0,"height":15.0},"packageDescription":"Test Package","estimatedDeliveryDate":"2025-10-20T10:00:00Z"}'
-	@printf "\n"
-	@printf "$(GREEN)Test delivery created!$(NC)\n"
-	@printf "$(YELLOW)Retrieving delivery...$(NC)\n"
-	@curl -X GET http://localhost:8000/api/v1/deliveries/TEST001
-	@printf "\n"
+init-ledger: ## Initialize the ledger (no sample data in new structure)
+	@printf "$(YELLOW)Note: The new chaincode does not include InitLedger with sample data.$(NC)\n"
+	@printf "$(YELLOW)Use the API to create users, shop items, and orders.$(NC)\n"
 
 health: ## Check system health
 	@printf "$(GREEN)Checking system health...$(NC)\n"
 	@curl -s http://localhost:8000/health | jq .
 	@printf "\n"
 
-list-deliveries: ## List all deliveries
-	@printf "$(GREEN)Fetching all deliveries...$(NC)\n"
-	@curl -s http://localhost:8000/api/v1/deliveries | jq .
+list-orders: ## List all orders (requires auth token)
+	@printf "$(GREEN)To list orders, use:$(NC)\n"
+	@printf "curl -H 'Authorization: Bearer <token>' http://localhost:8000/api/v1/orders\n"
+
+list-deliveries: ## List all deliveries (requires auth token)
+	@printf "$(GREEN)To list deliveries, use:$(NC)\n"
+	@printf "curl -H 'Authorization: Bearer <token>' http://localhost:8000/api/v1/deliveries\n"
 
 backup: ## Backup blockchain data
 	@printf "$(YELLOW)Creating backup...$(NC)\n"

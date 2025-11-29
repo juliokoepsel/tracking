@@ -36,6 +36,7 @@ def user_to_response(user: User) -> UserResponse:
         role=user.role,
         full_name=user.full_name,
         organization_id=user.organization_id,
+        address=user.address,
         is_active=user.is_active,
         created_at=user.created_at,
         updated_at=user.updated_at
@@ -62,6 +63,7 @@ async def create_user(
     - **role**: User role (CUSTOMER, SELLER, DELIVERY_PERSON, ADMIN)
     - **full_name**: User's full name
     - **organization_id**: Optional organization ID for delivery personnel
+    - **address**: Optional address for customers and sellers
     """
     # Check if username already exists
     existing_user = await User.find_one(User.username == user_data.username)
@@ -87,6 +89,7 @@ async def create_user(
         role=user_data.role,
         full_name=user_data.full_name,
         organization_id=user_data.organization_id,
+        address=user_data.address,
         is_active=True,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
@@ -188,6 +191,7 @@ async def update_user(
     - **email**: New email address
     - **full_name**: New full name
     - **organization_id**: New organization ID
+    - **address**: New address (for customers and sellers)
     - **is_active**: Active status
     """
     user = await User.get(user_id)

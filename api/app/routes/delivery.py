@@ -1,21 +1,16 @@
 """
-Delivery API Routes
-Handles all CRUD operations for package deliveries
+Delivery Routes - Blockchain delivery operations
+Handles delivery tracking, location updates, and custody handoffs
 """
 from fastapi import APIRouter, HTTPException, status, Depends
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any, Dict
 import logging
 
-from app.models.delivery import (
-    DeliveryCreate,
-    DeliveryUpdate,
-    DeliveryResponse,
-    DeliveryListResponse,
-    DeliveryStatus
-)
 from app.models.user import User
 from app.models.enums import UserRole
-from app.services.fabric_client import fabric_client
 from app.services.auth import get_current_user, require_roles
+from app.services import delivery_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,354 +25,479 @@ router = APIRouter(
 )
 
 
-@router.post(
-    "",
-    response_model=DeliveryResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new delivery",
-    description="Create a new package delivery record on the blockchain. Sellers and Admins only."
-)
-async def create_delivery(
-    delivery: DeliveryCreate,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
-):
-    """
-    Create a new delivery with the following information:
-    
-    - **deliveryId**: Unique identifier (uppercase alphanumeric)
-    - **senderName**: Name of the sender
-    - **senderAddress**: Full address of the sender
-    - **recipientName**: Name of the recipient
-    - **recipientAddress**: Full address of the recipient
-    - **packageWeight**: Weight in kilograms
-    - **packageDimensions**: Length, width, and height in centimeters
-    - **packageDescription**: Description of package contents
-    - **estimatedDeliveryDate**: Expected delivery date (ISO 8601 format)
-    """
-    try:
-        # Invoke chaincode with ownership
-        result = fabric_client.create_delivery(
-            tracking_id=delivery.deliveryId,
-            sender_name=delivery.senderName,
-            sender_address=delivery.senderAddress,
-            recipient_name=delivery.recipientName,
-            recipient_address=delivery.recipientAddress,
-            package_weight=delivery.packageWeight,
-            dimension_length=delivery.packageDimensions.length,
-            dimension_width=delivery.packageDimensions.width,
-            dimension_height=delivery.packageDimensions.height,
-            package_description=delivery.packageDescription,
-            estimated_delivery_date=delivery.estimatedDeliveryDate,
-            owner_id=str(current_user.id),
-            owner_role=current_user.role.value
-        )
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("error", "Failed to create delivery")
-            )
-        
-        # Retrieve the created delivery
-        created_delivery = fabric_client.read_delivery(delivery.deliveryId)
-        
-        if not created_delivery.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Delivery created but failed to retrieve"
-            )
-        
-        return DeliveryResponse(
-            success=True,
-            message="Delivery created successfully",
-            data=created_delivery.get("data")
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating delivery: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+# ======================
+# Request/Response DTOs
+# ======================
 
+class LocationUpdate(BaseModel):
+    """Request to update delivery location"""
+    city: str = Field(..., min_length=1, max_length=100)
+    state: str = Field(..., min_length=1, max_length=100)
+    country: str = Field(..., min_length=1, max_length=100)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "city": "Chicago",
+                "state": "IL",
+                "country": "USA"
+            }
+        }
+
+
+class HandoffInitiate(BaseModel):
+    """Request to initiate a custody handoff"""
+    to_user_id: str = Field(..., description="ID of the recipient")
+    to_role: str = Field(..., description="Role of the recipient (DELIVERY_PERSON or CUSTOMER)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "to_user_id": "507f1f77bcf86cd799439011",
+                "to_role": "DELIVERY_PERSON"
+            }
+        }
+
+
+class HandoffDispute(BaseModel):
+    """Request to dispute a handoff"""
+    reason: str = Field(..., min_length=1, max_length=500)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "reason": "Package appears damaged"
+            }
+        }
+
+
+class DeliveryResponse(BaseModel):
+    """Response for delivery operations"""
+    success: bool
+    message: str
+    data: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Delivery retrieved successfully",
+                "data": {
+                    "deliveryId": "DEL-20251009-ABC12345",
+                    "orderId": "507f1f77bcf86cd799439013",
+                    "packageWeight": 2.5,
+                    "packageDimensions": {"length": 40.0, "width": 30.0, "height": 10.0},
+                    "deliveryStatus": "IN_TRANSIT",
+                    "lastLocation": {"city": "Chicago", "state": "IL", "country": "USA"},
+                    "currentCustodianId": "507f1f77bcf86cd799439011",
+                    "currentCustodianRole": "DELIVERY_PERSON",
+                    "updatedAt": "2025-10-09T14:30:00Z"
+                }
+            }
+        }
+
+
+class DeliveryListResponse(BaseModel):
+    """Response for list of deliveries"""
+    success: bool
+    message: str
+    count: int
+    data: List[Dict[str, Any]]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Deliveries retrieved successfully",
+                "count": 1,
+                "data": [
+                    {
+                        "deliveryId": "DEL-20251009-ABC12345",
+                        "orderId": "507f1f77bcf86cd799439013",
+                        "deliveryStatus": "IN_TRANSIT",
+                        "currentCustodianId": "507f1f77bcf86cd799439011"
+                    }
+                ]
+            }
+        }
+
+
+# ======================
+# Delivery Routes
+# ======================
 
 @router.get(
     "/{delivery_id}",
     response_model=DeliveryResponse,
     summary="Get delivery by ID",
-    description="Retrieve a specific delivery by its ID from the blockchain. Requires authentication."
+    description="Retrieve a specific delivery by its ID from the blockchain."
 )
 async def get_delivery(
     delivery_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.DELIVERY_PERSON))
 ):
     """
     Retrieve a delivery by its ID.
     
-    - **delivery_id**: The unique identifier of the delivery
+    Available to SELLER, CUSTOMER, and DELIVERY_PERSON.
     """
-    try:
-        result = fabric_client.read_delivery(delivery_id)
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Delivery {delivery_id} not found"
-            )
-        
-        return DeliveryResponse(
-            success=True,
-            message="Delivery retrieved successfully",
-            data=result.get("data")
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving delivery: {str(e)}")
+    result = await delivery_service.get_delivery(
+        delivery_id=delivery_id,
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=result.get("error", f"Delivery {delivery_id} not found")
         )
+    
+    return DeliveryResponse(
+        success=True,
+        message="Delivery retrieved successfully",
+        data=result.get("data")
+    )
 
 
 @router.get(
     "",
     response_model=DeliveryListResponse,
-    summary="Get all deliveries",
-    description="Retrieve all deliveries from the blockchain. Requires authentication."
+    summary="Get my deliveries",
+    description="Get deliveries where current user is the custodian."
 )
-async def get_all_deliveries(
-    current_user: User = Depends(get_current_user)
+async def get_my_deliveries(
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON))
 ):
     """
-    Retrieve all deliveries stored on the blockchain.
-    """
-    try:
-        result = fabric_client.query_all_deliveries()
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to retrieve deliveries"
-            )
-        
-        deliveries = result.get("data", [])
-        
-        return DeliveryListResponse(
-            success=True,
-            message="Deliveries retrieved successfully",
-            count=len(deliveries),
-            data=deliveries
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving deliveries: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
-
-
-@router.put(
-    "/{delivery_id}",
-    response_model=DeliveryResponse,
-    summary="Update delivery",
-    description="Update delivery information on the blockchain. Sellers, Delivery Personnel, and Admins only."
-)
-async def update_delivery(
-    delivery_id: str, 
-    delivery_update: DeliveryUpdate,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.ADMIN))
-):
-    """
-    Update a delivery's information.
+    Get all deliveries where the current user is the custodian.
     
-    - **delivery_id**: The unique identifier of the delivery
-    - **recipientAddress**: New recipient address (optional)
-    - **deliveryStatus**: New delivery status (optional)
+    Available to SELLER and DELIVERY_PERSON.
     """
-    try:
-        # First check if delivery exists
-        existing = fabric_client.read_delivery(delivery_id)
-        if not existing.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Delivery {delivery_id} not found"
-            )
-        
-        # Update delivery with ownership verification
-        result = fabric_client.update_delivery_with_ownership(
-            delivery_id,
-            recipient_address=delivery_update.recipientAddress or "",
-            delivery_status=delivery_update.deliveryStatus.value if delivery_update.deliveryStatus else "",
-            caller_id=str(current_user.id),
-            caller_role=current_user.role.value
-        )
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("error", "Failed to update delivery")
-            )
-        
-        # Retrieve updated delivery
-        updated_delivery = fabric_client.read_delivery(delivery_id)
-        
-        return DeliveryResponse(
-            success=True,
-            message="Delivery updated successfully",
-            data=updated_delivery.get("data")
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating delivery: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
-
-
-@router.delete(
-    "/{delivery_id}",
-    response_model=DeliveryResponse,
-    summary="Delete delivery",
-    description="Mark a delivery as canceled on the blockchain. Sellers and Admins only."
-)
-async def delete_delivery(
-    delivery_id: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
-):
-    """
-    Delete (cancel) a delivery. This performs a soft delete by marking 
-    the delivery as CANCELED.
+    result = await delivery_service.get_my_deliveries(
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
     
-    - **delivery_id**: The unique identifier of the delivery
-    """
-    try:
-        # Check if delivery exists
-        existing = fabric_client.read_delivery(delivery_id)
-        if not existing.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Delivery {delivery_id} not found"
-            )
-        
-        # Delete (cancel) delivery with ownership verification
-        result = fabric_client.delete_delivery_with_ownership(
-            delivery_id,
-            caller_id=str(current_user.id),
-            caller_role=current_user.role.value
-        )
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("error", "Failed to delete delivery")
-            )
-        
-        # Retrieve canceled delivery
-        canceled_delivery = fabric_client.read_delivery(delivery_id)
-        
-        return DeliveryResponse(
-            success=True,
-            message="Delivery canceled successfully",
-            data=canceled_delivery.get("data")
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting delivery: {str(e)}")
+    if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+            detail=result.get("error", "Failed to retrieve deliveries")
         )
+    
+    deliveries = result.get("data", [])
+    
+    return DeliveryListResponse(
+        success=True,
+        message="Deliveries retrieved successfully",
+        count=len(deliveries) if deliveries else 0,
+        data=deliveries or []
+    )
 
 
 @router.get(
-    "/status/{delivery_status}",
+    "/status/{status}",
     response_model=DeliveryListResponse,
     summary="Get deliveries by status",
-    description="Retrieve all deliveries with a specific status. Requires authentication."
+    description="Get deliveries with a specific status where current user is custodian."
 )
 async def get_deliveries_by_status(
-    delivery_status: DeliveryStatus,
-    current_user: User = Depends(get_current_user)
+    status: str,
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.CUSTOMER))
 ):
     """
-    Retrieve all deliveries with a specific status.
-    
-    - **delivery_status**: The delivery status (PENDING, IN_TRANSIT, DELIVERED, CANCELED)
+    Get deliveries filtered by status where the current user is the custodian.
     """
-    try:
-        result = fabric_client.query_deliveries_by_status(delivery_status.value)
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to retrieve deliveries"
-            )
-        
-        deliveries = result.get("data", [])
-        
-        return DeliveryListResponse(
-            success=True,
-            message=f"Deliveries with status {delivery_status.value} retrieved successfully",
-            count=len(deliveries),
-            data=deliveries
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving deliveries by status: {str(e)}")
+    result = await delivery_service.get_deliveries_by_status(
+        status=status,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+            detail=result.get("error", "Failed to retrieve deliveries")
         )
+    
+    deliveries = result.get("data", [])
+    
+    return DeliveryListResponse(
+        success=True,
+        message=f"Deliveries with status {status} retrieved successfully",
+        count=len(deliveries) if deliveries else 0,
+        data=deliveries or []
+    )
+
+
+@router.put(
+    "/{delivery_id}/location",
+    response_model=DeliveryResponse,
+    summary="Update delivery location",
+    description="Update the last known location of a delivery. Delivery person only."
+)
+async def update_location(
+    delivery_id: str,
+    location: LocationUpdate,
+    current_user: User = Depends(require_roles(UserRole.DELIVERY_PERSON))
+):
+    """
+    Update the location of a delivery.
+    
+    Only the current DELIVERY_PERSON custodian can update location.
+    Delivery must be IN_TRANSIT.
+    """
+    result = await delivery_service.update_location(
+        delivery_id=delivery_id,
+        city=location.city,
+        state=location.state,
+        country=location.country,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to update location")
+        )
+    
+    logger.info(f"Delivery {delivery_id} location updated by {current_user.username}")
+    
+    return DeliveryResponse(
+        success=True,
+        message="Location updated successfully",
+        data=None
+    )
+
+
+@router.put(
+    "/{delivery_id}/cancel",
+    response_model=DeliveryResponse,
+    summary="Cancel a delivery",
+    description="Cancel a delivery. Seller only, before pickup."
+)
+async def cancel_delivery(
+    delivery_id: str,
+    current_user: User = Depends(require_roles(UserRole.SELLER))
+):
+    """
+    Cancel a delivery.
+    
+    Only the SELLER who created the delivery can cancel it,
+    and only before it has been picked up.
+    """
+    result = await delivery_service.cancel_delivery(
+        delivery_id=delivery_id,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to cancel delivery")
+        )
+    
+    logger.info(f"Delivery {delivery_id} cancelled by {current_user.username}")
+    
+    return DeliveryResponse(
+        success=True,
+        message="Delivery cancelled successfully",
+        data=None
+    )
 
 
 @router.get(
     "/{delivery_id}/history",
+    response_model=DeliveryResponse,
     summary="Get delivery history",
-    description="Retrieve the complete history of a delivery from the blockchain. Requires authentication."
+    description="Get the complete history of a delivery from blockchain."
 )
 async def get_delivery_history(
     delivery_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.DELIVERY_PERSON))
 ):
     """
-    Retrieve the complete transaction history of a delivery.
+    Get the complete history of a delivery.
     
-    - **delivery_id**: The unique identifier of the delivery
+    Uses blockchain's GetHistoryForKey to retrieve all state changes.
     """
-    try:
-        result = fabric_client.get_delivery_history(delivery_id)
-        
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"History for delivery {delivery_id} not found"
-            )
-        
-        return {
-            "success": True,
-            "message": "Delivery history retrieved successfully",
-            "data": result.get("data", [])
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving delivery history: {str(e)}")
+    result = await delivery_service.get_delivery_history(
+        delivery_id=delivery_id,
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=result.get("error", "Failed to retrieve history")
         )
+    
+    return DeliveryResponse(
+        success=True,
+        message="Delivery history retrieved successfully",
+        data=result.get("data")
+    )
+
+
+# ======================
+# Handoff Routes
+# ======================
+
+@router.post(
+    "/{delivery_id}/handoff/initiate",
+    response_model=DeliveryResponse,
+    summary="Initiate a custody handoff",
+    description="Start a custody transfer to another user. Seller or Delivery person."
+)
+async def initiate_handoff(
+    delivery_id: str,
+    handoff: HandoffInitiate,
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON))
+):
+    """
+    Initiate a custody handoff.
+    
+    The current custodian can initiate a handoff to:
+    - DELIVERY_PERSON (for pickup or transit handoff)
+    - CUSTOMER (for final delivery)
+    """
+    # Validate to_role
+    valid_roles = ["DELIVERY_PERSON", "CUSTOMER"]
+    if handoff.to_role not in valid_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid target role. Must be one of: {valid_roles}"
+        )
+    
+    result = await delivery_service.initiate_handoff(
+        delivery_id=delivery_id,
+        to_user_id=handoff.to_user_id,
+        to_role=handoff.to_role,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to initiate handoff")
+        )
+    
+    logger.info(f"Handoff initiated for {delivery_id} by {current_user.username} to {handoff.to_user_id}")
+    
+    return DeliveryResponse(
+        success=True,
+        message="Handoff initiated successfully",
+        data=None
+    )
+
+
+@router.post(
+    "/{delivery_id}/handoff/confirm",
+    response_model=DeliveryResponse,
+    summary="Confirm a custody handoff",
+    description="Accept a pending custody transfer. Delivery person or Customer."
+)
+async def confirm_handoff(
+    delivery_id: str,
+    current_user: User = Depends(require_roles(UserRole.DELIVERY_PERSON, UserRole.CUSTOMER))
+):
+    """
+    Confirm a pending custody handoff.
+    
+    The intended recipient confirms they have received the package.
+    """
+    result = await delivery_service.confirm_handoff(
+        delivery_id=delivery_id,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to confirm handoff")
+        )
+    
+    logger.info(f"Handoff confirmed for {delivery_id} by {current_user.username}")
+    
+    return DeliveryResponse(
+        success=True,
+        message="Handoff confirmed successfully",
+        data=None
+    )
+
+
+@router.post(
+    "/{delivery_id}/handoff/dispute",
+    response_model=DeliveryResponse,
+    summary="Dispute a custody handoff",
+    description="Reject a pending custody transfer with reason. Delivery person or Customer."
+)
+async def dispute_handoff(
+    delivery_id: str,
+    dispute: HandoffDispute,
+    current_user: User = Depends(require_roles(UserRole.DELIVERY_PERSON, UserRole.CUSTOMER))
+):
+    """
+    Dispute a pending custody handoff.
+    
+    The intended recipient can dispute if package is damaged, missing, etc.
+    """
+    result = await delivery_service.dispute_handoff(
+        delivery_id=delivery_id,
+        reason=dispute.reason,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to dispute handoff")
+        )
+    
+    logger.info(f"Handoff disputed for {delivery_id} by {current_user.username}: {dispute.reason}")
+    
+    return DeliveryResponse(
+        success=True,
+        message="Handoff disputed successfully",
+        data=None
+    )
+
+
+@router.post(
+    "/{delivery_id}/handoff/cancel",
+    response_model=DeliveryResponse,
+    summary="Cancel a pending handoff",
+    description="Cancel a pending custody transfer. Only the initiator can cancel."
+)
+async def cancel_handoff(
+    delivery_id: str,
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON))
+):
+    """
+    Cancel a pending custody handoff.
+    
+    Only the user who initiated the handoff can cancel it.
+    """
+    result = await delivery_service.cancel_handoff(
+        delivery_id=delivery_id,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to cancel handoff")
+        )
+    
+    logger.info(f"Handoff cancelled for {delivery_id} by {current_user.username}")
+    
+    return DeliveryResponse(
+        success=True,
+        message="Handoff cancelled successfully",
+        data=None
+    )

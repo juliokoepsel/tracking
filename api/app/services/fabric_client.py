@@ -5,7 +5,7 @@ Handles all interactions with the Hyperledger Fabric network
 import json
 import os
 import subprocess
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -127,149 +127,192 @@ class FabricClient:
         
         return self._execute_peer_command(cmd_args)
 
+    # =====================
+    # Delivery Operations
+    # =====================
+
     def create_delivery(
         self,
-        tracking_id: str,
-        sender_name: str,
-        sender_address: str,
-        recipient_name: str,
-        recipient_address: str,
+        delivery_id: str,
+        order_id: str,
         package_weight: float,
         dimension_length: float,
         dimension_width: float,
         dimension_height: float,
-        package_description: str,
-        estimated_delivery_date: str,
-        owner_id: str,
-        owner_role: str
+        location_city: str,
+        location_state: str,
+        location_country: str,
+        caller_id: str,
+        caller_role: str
     ) -> Dict[str, Any]:
         """
-        Create a new delivery on the blockchain with ownership
+        Create a new delivery on the blockchain.
+        Only SELLER can create deliveries.
         """
         args = [
-            tracking_id,
-            sender_name,
-            sender_address,
-            recipient_name,
-            recipient_address,
+            delivery_id,
+            order_id,
             str(package_weight),
             str(dimension_length),
             str(dimension_width),
             str(dimension_height),
-            package_description,
-            estimated_delivery_date,
-            owner_id,
-            owner_role
+            location_city,
+            location_state,
+            location_country,
+            caller_id,
+            caller_role
         ]
         return self.invoke_chaincode("CreateDelivery", args)
 
-    def read_delivery(self, delivery_id: str) -> Dict[str, Any]:
-        """Read a delivery from the blockchain"""
-        return self.query_chaincode("ReadDelivery", [delivery_id])
+    def read_delivery(self, delivery_id: str, caller_role: str) -> Dict[str, Any]:
+        """
+        Read a delivery from the blockchain.
+        SELLER, CUSTOMER, and DELIVERY_PERSON can read.
+        """
+        return self.query_chaincode("ReadDelivery", [delivery_id, caller_role])
 
-    def update_delivery_with_ownership(
+    def update_location(
         self,
         delivery_id: str,
-        recipient_address: str = "",
-        delivery_status: str = "",
-        caller_id: str = "",
-        caller_role: str = ""
+        city: str,
+        state: str,
+        country: str,
+        caller_id: str,
+        caller_role: str
     ) -> Dict[str, Any]:
-        """Update a delivery on the blockchain with ownership verification"""
-        args = [delivery_id, recipient_address, delivery_status, caller_id, caller_role]
-        return self.invoke_chaincode("UpdateDeliveryWithOwnership", args)
+        """
+        Update the last known location of a delivery.
+        Only the current DELIVERY_PERSON custodian can update location.
+        """
+        args = [delivery_id, city, state, country, caller_id, caller_role]
+        return self.invoke_chaincode("UpdateLocation", args)
 
-    def update_delivery_status(
-        self,
-        tracking_id: str,
-        new_status: str,
-        owner_id: str = "",
-        owner_role: str = ""
-    ) -> Dict[str, Any]:
-        """Update delivery status with ownership verification"""
-        return self.update_delivery_with_ownership(
-            delivery_id=tracking_id,
-            recipient_address="",
-            delivery_status=new_status,
-            caller_id=owner_id,
-            caller_role=owner_role
-        )
-
-    def delete_delivery_with_ownership(
+    def cancel_delivery(
         self,
         delivery_id: str,
         caller_id: str,
         caller_role: str
     ) -> Dict[str, Any]:
-        """Delete (cancel) a delivery with ownership verification"""
+        """
+        Cancel a delivery.
+        Only SELLER can cancel, and only before first handoff.
+        """
         args = [delivery_id, caller_id, caller_role]
-        return self.invoke_chaincode("DeleteDeliveryWithOwnership", args)
+        return self.invoke_chaincode("CancelDelivery", args)
 
-    def query_all_deliveries(self) -> Dict[str, Any]:
-        """Query all deliveries from the blockchain"""
-        return self.query_chaincode("QueryAllDeliveries", [])
+    # =====================
+    # Handoff Operations
+    # =====================
 
-    def get_delivery_history(self, delivery_id: str) -> Dict[str, Any]:
-        """Get the history of a delivery"""
-        return self.query_chaincode("GetDeliveryHistory", [delivery_id])
-
-    def query_deliveries_by_status(self, status: str) -> Dict[str, Any]:
-        """Query deliveries by status"""
-        return self.query_chaincode("QueryDeliveriesByStatus", [status])
-
-    def query_deliveries_by_holder(self, holder_id: str) -> Dict[str, Any]:
-        """Query deliveries by current holder"""
-        return self.query_chaincode("QueryDeliveriesByHolder", [holder_id])
-
-    # Chain of custody methods
     def initiate_handoff(
         self,
         delivery_id: str,
-        from_user_id: str,
-        from_role: str,
         to_user_id: str,
-        to_role: str
+        to_role: str,
+        caller_id: str,
+        caller_role: str
     ) -> Dict[str, Any]:
-        """Initiate a custody handoff"""
-        args = [delivery_id, from_user_id, from_role, to_user_id, to_role]
+        """
+        Initiate a custody handoff.
+        SELLER or DELIVERY_PERSON can initiate handoffs.
+        """
+        args = [delivery_id, to_user_id, to_role, caller_id, caller_role]
         return self.invoke_chaincode("InitiateHandoff", args)
 
     def confirm_handoff(
         self,
         delivery_id: str,
-        confirming_user_id: str
+        caller_id: str,
+        caller_role: str
     ) -> Dict[str, Any]:
-        """Confirm a pending custody handoff"""
-        args = [delivery_id, confirming_user_id]
+        """
+        Confirm a pending custody handoff.
+        DELIVERY_PERSON or CUSTOMER can confirm handoffs.
+        """
+        args = [delivery_id, caller_id, caller_role]
         return self.invoke_chaincode("ConfirmHandoff", args)
 
     def dispute_handoff(
         self,
         delivery_id: str,
-        disputing_user_id: str,
-        reason: str
+        reason: str,
+        caller_id: str,
+        caller_role: str
     ) -> Dict[str, Any]:
-        """Dispute a pending custody handoff"""
-        args = [delivery_id, disputing_user_id, reason]
+        """
+        Dispute a pending custody handoff.
+        The intended recipient (DELIVERY_PERSON or CUSTOMER) can dispute.
+        """
+        args = [delivery_id, reason, caller_id, caller_role]
         return self.invoke_chaincode("DisputeHandoff", args)
 
     def cancel_handoff(
         self,
         delivery_id: str,
-        cancelling_user_id: str
+        caller_id: str,
+        caller_role: str
     ) -> Dict[str, Any]:
-        """Cancel a pending custody handoff"""
-        args = [delivery_id, cancelling_user_id]
+        """
+        Cancel a pending handoff.
+        Only the initiator can cancel.
+        """
+        args = [delivery_id, caller_id, caller_role]
         return self.invoke_chaincode("CancelHandoff", args)
+
+    # =====================
+    # Query Operations
+    # =====================
+
+    def query_deliveries_by_custodian(
+        self,
+        custodian_id: str,
+        caller_id: str,
+        caller_role: str
+    ) -> Dict[str, Any]:
+        """
+        Query all deliveries held by a specific user.
+        Users can only query their own deliveries.
+        """
+        args = [custodian_id, caller_id, caller_role]
+        return self.query_chaincode("QueryDeliveriesByCustodian", args)
+
+    def query_deliveries_by_status(
+        self,
+        status: str,
+        caller_id: str,
+        caller_role: str
+    ) -> Dict[str, Any]:
+        """
+        Query deliveries by status for the caller.
+        Only returns deliveries where caller is the current custodian.
+        """
+        args = [status, caller_id, caller_role]
+        return self.query_chaincode("QueryDeliveriesByStatus", args)
+
+    def get_delivery_history(
+        self,
+        delivery_id: str,
+        caller_role: str
+    ) -> Dict[str, Any]:
+        """
+        Get the complete history of a delivery.
+        SELLER, CUSTOMER, and DELIVERY_PERSON can view history.
+        """
+        args = [delivery_id, caller_role]
+        return self.query_chaincode("GetDeliveryHistory", args)
+
+    # =====================
+    # Health Check
+    # =====================
 
     def ping_blockchain(self) -> Dict[str, Any]:
         """
         Health check for blockchain connectivity.
-        Attempts to query the chaincode to verify the network is accessible.
+        Attempts to check if delivery exists (simple query) to verify the network is accessible.
         """
         try:
-            # Query all deliveries as a simple health check
-            result = self.query_chaincode("QueryAllDeliveries", [])
+            # Use DeliveryExists as a simple health check (doesn't need role)
+            result = self.query_chaincode("DeliveryExists", ["health-check-dummy"])
             if result.get("success"):
                 return {"success": True, "message": "Blockchain is accessible"}
             else:

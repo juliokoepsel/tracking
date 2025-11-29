@@ -17,12 +17,12 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 │                     Client Applications                      │
 └──────────────────────┬──────────────────────────────────────┘
                        │
-                       │ REST API (HTTP Basic Auth)
+                       │ REST API (JWT Auth)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              FastAPI Service (Docker Container)              │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  Routes → Auth → Services → Fabric SDK / MongoDB     │   │
+│  │  Routes → Auth → Services → Fabric Client / MongoDB  │   │
 │  └──────────────────────────────────────────────────────┘   │
 └───────────────┬─────────────────────────┬───────────────────┘
                 │                         │
@@ -30,13 +30,14 @@ A production-ready, distributed package delivery tracking system leveraging bloc
                 ▼                         ▼
 ┌───────────────────────────┐   ┌─────────────────────────────┐
 │  Hyperledger Fabric       │   │     MongoDB Container       │
-│  ┌──────────┐ ┌─────────┐ │   │  ┌─────────┐  ┌─────────┐  │
-│  │  Peer    │ │ Orderer │ │   │  │ Users   │  │ Orders  │  │
-│  └──────────┘ └─────────┘ │   │  └─────────┘  └─────────┘  │
-│  ┌──────────────────────┐ │   └─────────────────────────────┘
-│  │ Chaincode (Go)       │ │
-│  │ • Chain of Custody   │ │
-│  │ • Ownership Enforce  │ │
+│  ┌──────────┐ ┌─────────┐ │   │  ┌─────────┐ ┌──────────┐  │
+│  │  Peer    │ │ Orderer │ │   │  │ Users   │ │ Orders   │  │
+│  └──────────┘ └─────────┘ │   │  ├─────────┤ ├──────────┤  │
+│  ┌──────────────────────┐ │   │  │ShopItems│ │Deliveries│  │
+│  │ Chaincode (Go)       │ │   │  └─────────┘ └──────────┘  │
+│  │ • Delivery Tracking  │ │   └─────────────────────────────┘
+│  │ • Role Enforcement   │ │
+│  │ • Handoff Workflow   │ │
 │  └──────────────────────┘ │
 └───────────────────────────┘
 ```
@@ -44,27 +45,27 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 ## 📦 Features
 
 ### Core Features
-- **CRUD Operations**: Create, Read, Update, Delete delivery packages
-- **Blockchain Storage**: All delivery data stored on Hyperledger Fabric
-- **Smart Contracts**: Go-based chaincode for business logic
-- **RESTful API**: FastAPI endpoints for easy integration
+- **Order Management**: Customers create orders, sellers confirm to create blockchain deliveries
+- **Shop Items**: Sellers manage product catalogs with pricing
+- **Blockchain Delivery Tracking**: All delivery data stored immutably on Hyperledger Fabric
+- **Smart Contracts**: Go-based chaincode with role validation and chaincode events
+- **RESTful API**: FastAPI endpoints with JWT authentication
 - **Docker Containerization**: Fully containerized deployment
-- **Status Tracking**: Track delivery status throughout the lifecycle
 
 ### Authentication & Authorization
-- **HTTP Basic Auth**: Secure API access with username/password
+- **JWT Authentication**: Secure token-based API access
 - **Multi-Role System**: Customer, Seller, Delivery Person, Admin roles
 - **Role-Based Access Control**: Endpoints restricted by user role
-- **Ownership Enforcement**: Chaincode-level ownership verification
+- **Chaincode Role Enforcement**: Role validation at the blockchain level
 
 ### Chain of Custody
-- **Handoff Tracking**: Full custody transfer recording
+- **Handoff Tracking**: Full custody transfer recording between roles
 - **Two-Party Confirmation**: Both parties must confirm transfers
-- **Dispute System**: Ability to dispute handoffs
-- **Audit Trail**: Complete history of custody changes
+- **Dispute System**: Ability to dispute handoffs with reason tracking
+- **Chaincode Events**: Real-time status sync via blockchain events
 
 ### Off-Chain Data
-- **MongoDB Integration**: Users and orders stored off-chain
+- **MongoDB Integration**: Users, orders, and shop items stored off-chain
 - **Beanie ODM**: Async MongoDB document modeling
 - **Pre-seeded Admin**: System starts with admin user
 
@@ -72,19 +73,36 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 
 | Role | Permissions |
 |------|-------------|
-| **ADMIN** | Full system access, user management, view all orders |
-| **SELLER** | Create orders/deliveries, initiate handoffs, manage own orders |
-| **DELIVERY_PERSON** | Confirm/dispute handoffs, update delivery status |
-| **CUSTOMER** | View own orders, confirm final delivery |
+| **ADMIN** | User management only (create, update, deactivate users) |
+| **SELLER** | Manage shop items, confirm orders → create deliveries, initiate handoffs |
+| **DELIVERY_PERSON** | Confirm/dispute handoffs, transit custody transfers |
+| **CUSTOMER** | Create orders, view own orders, confirm final delivery |
 
-## 📊 Delivery Status Flow
+## 📊 Order & Delivery Flow
 
 ```
-PENDING_SHIPPING → PENDING_PICKUP → IN_TRANSIT → PENDING_DELIVERY_CONFIRMATION → CONFIRMED_DELIVERY
-        ↓               ↓                ↓                    ↓
-    CANCELLED     DISPUTED_PICKUP  PENDING_TRANSIT_HANDOFF  DISPUTED_DELIVERY
-                                          ↓
-                                   DISPUTED_TRANSIT_HANDOFF
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ORDER FLOW (MongoDB)                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Customer creates order    Seller confirms order    Delivery created        │
+│  ────────────────────► ──────────────────────► ────────────────────►       │
+│  PENDING_CONFIRMATION       CONFIRMED              (links to delivery_id)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DELIVERY FLOW (Blockchain)                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PENDING_PICKUP ──► IN_TRANSIT ──► OUT_FOR_DELIVERY ──► DELIVERED          │
+│        │                 │                 │                                │
+│        ▼                 ▼                 ▼                                │
+│  DISPUTED_PICKUP   DISPUTED_TRANSIT  DISPUTED_DELIVERY                     │
+│                                                                             │
+│  Handoff Flow:                                                              │
+│  Seller → DeliveryPerson → [Multiple Transit Handoffs] → Customer          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🚀 Quick Start
@@ -135,92 +153,98 @@ Password: admin
 ## 📚 API Endpoints
 
 ### Authentication
-All endpoints require HTTP Basic Auth. Include credentials in the request header.
+All endpoints require JWT authentication (except login/register). Include token in Authorization header:
+```
+Authorization: Bearer <token>
+```
+
+### Auth
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/login` | Login and get JWT token |
 
 ### Users (Admin Only)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/users` | Create new user |
 | GET | `/api/v1/users` | List all users |
 | GET | `/api/v1/users/me` | Get current user profile |
+| PUT | `/api/v1/users/me/address` | Update own address |
 | GET | `/api/v1/users/{id}` | Get user by ID |
-| PUT | `/api/v1/users/{id}` | Update user |
-| DELETE | `/api/v1/users/{id}` | Deactivate user |
+| PUT | `/api/v1/users/{id}` | Update user (Admin) |
+| DELETE | `/api/v1/users/{id}` | Deactivate user (Admin) |
+
+### Shop Items (Seller)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/shop-items` | Create shop item (Seller) |
+| GET | `/api/v1/shop-items` | List all shop items |
+| GET | `/api/v1/shop-items/{id}` | Get item by ID |
+| PUT | `/api/v1/shop-items/{id}` | Update item (Owner/Admin) |
+| DELETE | `/api/v1/shop-items/{id}` | Delete item (Owner/Admin) |
 
 ### Orders
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/orders` | Create order (Seller/Admin) |
+| POST | `/api/v1/orders` | Create order (Customer) |
 | GET | `/api/v1/orders` | List orders (role-filtered) |
 | GET | `/api/v1/orders/{id}` | Get order details |
-| GET | `/api/v1/orders/tracking/{tracking_id}` | Get by tracking ID |
+| PUT | `/api/v1/orders/{id}/confirm` | Confirm order → creates delivery (Seller) |
 | PUT | `/api/v1/orders/{id}/cancel` | Cancel order |
 
 ### Deliveries (Blockchain)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/deliveries` | Create delivery |
-| GET | `/api/v1/deliveries` | Get all deliveries |
+| GET | `/api/v1/deliveries` | Get all deliveries (role-filtered) |
 | GET | `/api/v1/deliveries/{id}` | Get delivery by ID |
-| PUT | `/api/v1/deliveries/{id}` | Update delivery |
-| DELETE | `/api/v1/deliveries/{id}` | Cancel delivery |
-| GET | `/api/v1/deliveries/status/{status}` | Filter by status |
-| GET | `/api/v1/deliveries/{id}/history` | Get history |
+| GET | `/api/v1/deliveries/{id}/history` | Get delivery history |
 
-### Chain of Custody
+### Handoff Operations
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/deliveries/{id}/handoff/initiate` | Start handoff |
-| POST | `/api/v1/deliveries/{id}/handoff/confirm` | Confirm handoff |
-| POST | `/api/v1/deliveries/{id}/handoff/dispute` | Dispute handoff |
-| POST | `/api/v1/deliveries/{id}/handoff/cancel` | Cancel handoff |
+| POST | `/api/v1/deliveries/{id}/handoff/initiate` | Initiate handoff to next party |
+| POST | `/api/v1/deliveries/{id}/handoff/confirm` | Confirm pending handoff |
+| POST | `/api/v1/deliveries/{id}/handoff/dispute` | Dispute handoff with reason |
 
-### Example: Create Delivery
+### Example: Complete Order Flow
+
+**1. Customer creates an order:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/deliveries \
-  -u admin:admin \
+curl -X POST http://localhost:8000/api/v1/orders \
+  -H "Authorization: Bearer <customer_token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryId": "DEL001",
-    "senderName": "John Doe",
-    "senderAddress": "123 Main St, City, Country",
-    "recipientName": "Jane Smith",
-    "recipientAddress": "456 Oak Ave, City, Country",
-    "packageWeight": 2.5,
-    "packageDimensions": {
-      "length": 30,
-      "width": 20,
-      "height": 15
-    },
-    "packageDescription": "Electronics",
-  "estimatedDeliveryDate": "2025-10-15T10:00:00Z"
-}
+    "items": [
+      {"item_id": "shop_item_id_here", "quantity": 2}
+    ],
+    "shipping_address": {
+      "street": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10001",
+      "country": "USA"
+    }
+  }'
 ```
 
-### Get Delivery by ID
+**2. Seller confirms the order (creates blockchain delivery):**
 ```bash
-GET /api/v1/deliveries/{deliveryId}
+curl -X PUT http://localhost:8000/api/v1/orders/{order_id}/confirm \
+  -H "Authorization: Bearer <seller_token>"
 ```
 
-### Get All Deliveries
+**3. Seller initiates handoff to delivery person:**
 ```bash
-GET /api/v1/deliveries
+curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/initiate \
+  -H "Authorization: Bearer <seller_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"to_user_id": "delivery_person_id"}'
 ```
 
-### Update Delivery
+**4. Delivery person confirms pickup:**
 ```bash
-PUT /api/v1/deliveries/{deliveryId}
-Content-Type: application/json
-
-{
-  "deliveryStatus": "IN_TRANSIT",
-  "recipientAddress": "789 New St, City, Country"
-}
-```
-
-### Delete Delivery
-```bash
-DELETE /api/v1/deliveries/{deliveryId}
+curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/confirm \
+  -H "Authorization: Bearer <delivery_token>"
 ```
 
 ## 🗂️ Project Structure
@@ -242,10 +266,10 @@ tracking/
 │   └── organizations/            # Crypto material (generated)
 │
 ├── chaincode/                    # Go smart contracts
-│   ├── delivery/
-│   │   ├── main.go
-│   │   ├── delivery.go
-│   │   └── go.mod
+│   └── delivery/
+│       ├── main.go               # Chaincode entry point
+│       ├── delivery.go           # Delivery contract logic
+│       └── go.mod
 │
 └── api/                          # FastAPI application
     ├── Dockerfile
@@ -254,12 +278,24 @@ tracking/
     ├── connection-profile.json
     └── app/
         ├── __init__.py
-        ├── models/               # Pydantic models
-        │   └── delivery.py
+        ├── models/               # Pydantic/Beanie models
+        │   ├── enums.py          # Role, OrderStatus, DeliveryStatus
+        │   ├── user.py           # User model with Address
+        │   ├── shop_item.py      # ShopItem model (seller products)
+        │   └── order.py          # Order model with items
         ├── routes/               # API endpoints
-        │   └── delivery.py
+        │   ├── auth.py           # JWT authentication
+        │   ├── users.py          # User management
+        │   ├── shop_items.py     # Shop item CRUD
+        │   ├── orders.py         # Order management
+        │   └── delivery.py       # Blockchain delivery operations
         └── services/             # Business logic
-            └── fabric_client.py
+            ├── fabric_client.py  # Fabric SDK wrapper
+            ├── order_service.py  # Order business logic
+            ├── delivery_service.py # Delivery operations
+            ├── shop_item_service.py # Shop item logic
+            ├── event_listener.py # Chaincode event sync
+            └── database.py       # MongoDB initialization
 ```
 
 ## 🔧 Development
@@ -284,26 +320,43 @@ docker-compose logs -f api
 docker-compose logs -f peer0.delivery.example.com
 ```
 
-## 📊 Data Model
+## 📊 Data Models
 
-**Delivery Package:**
-- `deliveryId`: Unique identifier
-- `senderName`: Name of the sender
-- `senderAddress`: Sender's address
-- `recipientName`: Name of the recipient
-- `recipientAddress`: Recipient's address
-- `packageWeight`: Weight in kg
-- `packageDimensions`: Object with length, width, height (cm)
-- `packageDescription`: Description of contents
-- `deliveryStatus`: PENDING | IN_TRANSIT | DELIVERED | CANCELED
-- `createdAt`: Timestamp of creation
-- `updatedAt`: Timestamp of last update
-- `estimatedDeliveryDate`: Expected delivery date
+### Blockchain Delivery (Chaincode)
+- `delivery_id`: Unique identifier
+- `order_id`: Reference to MongoDB order
+- `seller_id`: Seller user ID
+- `customer_id`: Customer user ID
+- `current_holder_id`: Current custody holder
+- `status`: Delivery status enum
+- `pending_handoff_to`: User ID for pending handoff
+- `created_at`: Creation timestamp
+- `updated_at`: Last update timestamp
+
+### Order (MongoDB)
+- `customer_id`: Customer who created the order
+- `seller_id`: Seller who owns the items
+- `items`: List of {item_id, quantity, price_cents}
+- `total_cents`: Total order amount
+- `status`: PENDING_CONFIRMATION | CONFIRMED | CANCELLED
+- `delivery_id`: Link to blockchain delivery (after confirmation)
+- `shipping_address`: Delivery address
+
+### ShopItem (MongoDB)
+- `seller_id`: Owner of the item
+- `name`: Product name
+- `description`: Product description
+- `price_cents`: Price in cents
+- `stock`: Available quantity
+- `is_active`: Whether item is available
 
 ## 🔐 Security Notes
 
-- All transactions are recorded on the blockchain (immutable)
-- Access control managed through Fabric MSP
+- All delivery transactions are recorded on the blockchain (immutable)
+- JWT authentication with configurable expiration
+- Role-based access control at API and chaincode level
+- Chaincode validates caller role for all operations
+- MongoDB stores sensitive user data off-chain
 - TLS enabled for peer-to-peer communication
 - Admin credentials stored in .env file (change in production)
 

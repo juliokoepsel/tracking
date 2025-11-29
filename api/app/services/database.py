@@ -9,6 +9,7 @@ import logging
 
 from app.models.user import User
 from app.models.order import Order
+from app.models.shop_item import ShopItem
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ async def init_db():
 
     await init_beanie(
         database=_client[mongo_db],
-        document_models=[User, Order]
+        document_models=[User, Order, ShopItem]
     )
     
     logger.info(f"MongoDB connected successfully to database: {mongo_db}")

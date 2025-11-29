@@ -1,18 +1,17 @@
 """
 Order Routes - Order management operations
-Links off-chain orders to blockchain deliveries
+Customer creates orders, Seller confirms to create blockchain delivery
 """
 from fastapi import APIRouter, HTTPException, status, Depends
-from typing import Optional
+from typing import List
 from datetime import datetime
 import logging
-import uuid
 
-from app.models.order import Order, OrderCreate, OrderResponse, OrderListResponse
+from app.models.order import Order, OrderCreate, OrderConfirm, OrderResponse, OrderListResponse
 from app.models.user import User
 from app.models.enums import UserRole, DeliveryStatus
 from app.services.auth import get_current_user, require_roles
-from app.services.fabric_client import FabricClient
+from app.services import order_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +24,17 @@ router = APIRouter(
     },
 )
 
-# Initialize Fabric client
-fabric_client = FabricClient()
-
 
 def order_to_response(order: Order) -> OrderResponse:
     """Convert Order document to OrderResponse schema"""
     return OrderResponse(
         id=str(order.id),
-        tracking_id=order.tracking_id,
         seller_id=order.seller_id,
         customer_id=order.customer_id,
-        logistics_company_id=order.logistics_company_id,
         items=order.items,
-        status=order.status,
         total_amount=order.total_amount,
-        shipping_address=order.shipping_address,
-        recipient_name=order.recipient_name,
-        recipient_phone=order.recipient_phone,
+        delivery_id=order.delivery_id,
+        status=order.status,
         created_at=order.created_at,
         updated_at=order.updated_at
     )
@@ -53,81 +45,96 @@ def order_to_response(order: Order) -> OrderResponse:
     response_model=OrderResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new order",
-    description="Create a new order. Sellers only."
+    description="Create a new order. Customer only."
 )
 async def create_order(
     order_data: OrderCreate,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER))
 ):
     """
-    Create a new order with the following information:
+    Create a new order:
     
-    - **customer_id**: ID of the customer
-    - **items**: List of order items (total is calculated automatically)
-    - **shipping_address**: Delivery address
-    - **recipient_name**: Name of the recipient
-    - **package_weight/length/width/height**: Package dimensions
-    - **package_description**: Description of package contents
-    - **estimated_delivery_date**: Expected delivery date
+    - **seller_id**: ID of the seller
+    - **items**: List of OrderItems with item_id, quantity, and price_at_purchase
     
-    This will also create a corresponding delivery on the blockchain.
+    Order starts in PENDING_CONFIRMATION status until seller confirms.
     """
-    # Generate tracking ID
-    tracking_id = f"TRK-{uuid.uuid4().hex[:8].upper()}"
-    
-    # Calculate total from items
-    total_amount = sum(item.price * item.quantity for item in order_data.items)
-    
-    # Create order in MongoDB
-    new_order = Order(
-        tracking_id=tracking_id,
-        seller_id=str(current_user.id),
-        customer_id=order_data.customer_id,
-        items=order_data.items,
-        status=DeliveryStatus.PENDING_SHIPPING,
-        total_amount=total_amount,
-        shipping_address=order_data.shipping_address,
-        recipient_name=order_data.recipient_name,
-        recipient_phone=order_data.recipient_phone,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
-    
-    # Create delivery on blockchain
     try:
-        blockchain_result = fabric_client.create_delivery(
-            tracking_id=tracking_id,
-            sender_name=current_user.username,
-            sender_address="",  # Seller address not tracked
-            recipient_name=order_data.recipient_name,
-            recipient_address=order_data.shipping_address,
-            package_weight=order_data.package_weight,
-            dimension_length=order_data.package_length,
-            dimension_width=order_data.package_width,
-            dimension_height=order_data.package_height,
-            package_description=order_data.package_description,
-            estimated_delivery_date=order_data.estimated_delivery_date,
-            owner_id=str(current_user.id),
-            owner_role=current_user.role.value
+        order = await order_service.create_order(
+            customer_id=str(current_user.id),
+            order_data=order_data
         )
         
-        if not blockchain_result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create blockchain delivery: {blockchain_result.get('error')}"
-            )
-    except Exception as e:
-        logger.error(f"Blockchain error creating delivery: {e}")
+        logger.info(f"Order created by customer '{current_user.username}' for seller '{order_data.seller_id}'")
+        return order_to_response(order)
+        
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Blockchain error: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post(
+    "/{order_id}/confirm",
+    response_model=OrderResponse,
+    summary="Confirm an order",
+    description="Confirm an order and create delivery on blockchain. Seller only."
+)
+async def confirm_order(
+    order_id: str,
+    confirm_data: OrderConfirm,
+    current_user: User = Depends(require_roles(UserRole.SELLER))
+):
+    """
+    Confirm an order and create a delivery on the blockchain:
+    
+    - **package_weight**: Weight in kg
+    - **package_length/width/height**: Dimensions in cm
+    
+    Requires seller to have an address configured.
+    """
+    # Validate seller has address
+    if not current_user.address:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Seller must have an address configured to confirm orders"
         )
     
-    # Save order to MongoDB
-    await new_order.insert()
-    logger.info(f"Order '{tracking_id}' created by seller '{current_user.username}'")
+    order = await order_service.get_order_by_id(order_id)
     
-    return order_to_response(new_order)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Validate ownership
+    if order.seller_id != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only confirm your own orders"
+        )
+    
+    try:
+        updated_order, _ = await order_service.confirm_order(
+            order=order,
+            confirm_data=confirm_data,
+            seller_id=str(current_user.id),
+            seller_role=current_user.role.value,
+            location_city=current_user.address.city,
+            location_state=current_user.address.state,
+            location_country=current_user.address.country
+        )
+        
+        logger.info(f"Order '{order_id}' confirmed by seller '{current_user.username}', delivery_id: {updated_order.delivery_id}")
+        return order_to_response(updated_order)
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.get(
@@ -137,44 +144,26 @@ async def create_order(
     description="List orders based on user role."
 )
 async def list_orders(
-    order_status: Optional[DeliveryStatus] = None,
-    current_user: User = Depends(get_current_user)
+    order_status: DeliveryStatus = None,
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER))
 ):
     """
     List orders:
     
-    - **Admins**: See all orders
-    - **Sellers**: See only their own orders
-    - **Customers**: See orders addressed to them
-    - **Delivery Personnel**: See orders in transit assigned to them
+    - **Sellers**: See orders where they are the seller
+    - **Customers**: See their own orders
     
     Optional filter:
     - **order_status**: Filter by delivery status
     """
-    query = {}
+    if current_user.role == UserRole.SELLER:
+        orders = await order_service.get_orders_by_seller(str(current_user.id))
+    else:  # CUSTOMER
+        orders = await order_service.get_orders_by_customer(str(current_user.id))
     
-    # Role-based filtering
-    if current_user.role == UserRole.ADMIN:
-        pass  # Admins see all orders
-    elif current_user.role == UserRole.SELLER:
-        query["seller_id"] = str(current_user.id)
-    elif current_user.role == UserRole.CUSTOMER:
-        query["customer_id"] = str(current_user.id)
-    elif current_user.role == UserRole.DELIVERY_PERSON:
-        # Delivery personnel see in-transit orders
-        # In a full implementation, we'd track assigned delivery person
-        query["status"] = {"$in": [
-            DeliveryStatus.IN_TRANSIT,
-            DeliveryStatus.PENDING_PICKUP,
-            DeliveryStatus.PENDING_TRANSIT_HANDOFF,
-            DeliveryStatus.PENDING_DELIVERY_CONFIRMATION
-        ]}
-    
-    # Status filter
+    # Apply status filter
     if order_status:
-        query["status"] = order_status
-    
-    orders = await Order.find(query).to_list()
+        orders = [o for o in orders if o.status == order_status]
     
     return OrderListResponse(
         success=True,
@@ -192,88 +181,29 @@ async def list_orders(
 )
 async def get_order(
     order_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER))
 ):
     """
     Get detailed information about an order.
     
     Access is role-based:
-    - **Admins**: Can view any order
-    - **Sellers**: Can view their own orders
+    - **Sellers**: Can view orders where they are the seller
     - **Customers**: Can view their own orders
-    - **Delivery Personnel**: Can view orders they're handling
     """
-    order = await Order.get(order_id)
+    order = await order_service.get_order_by_id(order_id)
     
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID '{order_id}' not found"
+            detail="Order not found"
         )
     
-    # Check access
-    if current_user.role == UserRole.ADMIN:
-        pass  # Admins can view all
-    elif current_user.role == UserRole.SELLER:
+    # Validate access
+    if current_user.role == UserRole.SELLER:
         if order.seller_id != str(current_user.id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view your own orders"
-            )
-    elif current_user.role == UserRole.CUSTOMER:
-        if order.customer_id != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view your own orders"
-            )
-    elif current_user.role == UserRole.DELIVERY_PERSON:
-        # Check if order is in a state accessible to delivery personnel
-        allowed_statuses = [
-            DeliveryStatus.IN_TRANSIT,
-            DeliveryStatus.PENDING_PICKUP,
-            DeliveryStatus.PENDING_TRANSIT_HANDOFF,
-            DeliveryStatus.PENDING_DELIVERY_CONFIRMATION
-        ]
-        if order.status not in allowed_statuses:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view orders in delivery states"
-            )
-    
-    return order_to_response(order)
-
-
-@router.get(
-    "/tracking/{tracking_id}",
-    response_model=OrderResponse,
-    summary="Get order by tracking ID",
-    description="Get order details by tracking ID."
-)
-async def get_order_by_tracking(
-    tracking_id: str,
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get order by tracking ID.
-    
-    Useful for looking up orders using the blockchain tracking ID.
-    """
-    order = await Order.find_one(Order.tracking_id == tracking_id)
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with tracking ID '{tracking_id}' not found"
-        )
-    
-    # Check access (same logic as get_order)
-    if current_user.role == UserRole.ADMIN:
-        pass
-    elif current_user.role == UserRole.SELLER:
-        if order.seller_id != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view your own orders"
+                detail="You can only view orders where you are the seller"
             )
     elif current_user.role == UserRole.CUSTOMER:
         if order.customer_id != str(current_user.id):
@@ -289,107 +219,37 @@ async def get_order_by_tracking(
     "/{order_id}/cancel",
     response_model=OrderResponse,
     summary="Cancel an order",
-    description="Cancel an order. Only allowed before pickup."
+    description="Cancel an order. Customer only, before seller confirmation."
 )
 async def cancel_order(
     order_id: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER))
 ):
     """
     Cancel an order.
     
-    Only allowed when the order is in PENDING_SHIPPING status.
+    Only allowed when the order is in PENDING_CONFIRMATION status
+    (before seller confirms).
     """
-    order = await Order.get(order_id)
+    order = await order_service.get_order_by_id(order_id)
     
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID '{order_id}' not found"
+            detail="Order not found"
         )
     
-    # Check ownership for sellers
-    if current_user.role == UserRole.SELLER:
-        if order.seller_id != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only cancel your own orders"
-            )
-    
-    # Check if cancellation is allowed
-    if order.status != DeliveryStatus.PENDING_SHIPPING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Order can only be cancelled before pickup"
-        )
-    
-    # Update blockchain status
     try:
-        blockchain_result = fabric_client.update_delivery_status(
-            tracking_id=order.tracking_id,
-            new_status=DeliveryStatus.CANCELLED.value,
-            owner_id=str(current_user.id),
-            owner_role=current_user.role.value
+        cancelled_order = await order_service.cancel_order(
+            order=order,
+            customer_id=str(current_user.id)
         )
         
-        if not blockchain_result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to update blockchain: {blockchain_result.get('error')}"
-            )
-    except Exception as e:
-        logger.error(f"Blockchain error cancelling order: {e}")
+        logger.info(f"Order '{order_id}' cancelled by customer '{current_user.username}'")
+        return order_to_response(cancelled_order)
+        
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Blockchain error: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
-    
-    # Update MongoDB
-    order.status = DeliveryStatus.CANCELLED
-    order.updated_at = datetime.utcnow()
-    await order.save()
-    
-    logger.info(f"Order '{order.tracking_id}' cancelled by '{current_user.username}'")
-    
-    return order_to_response(order)
-
-
-@router.put(
-    "/{order_id}/notes",
-    response_model=OrderResponse,
-    summary="Update order notes",
-    description="Update the notes on an order."
-)
-async def update_order_notes(
-    order_id: str,
-    notes: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.ADMIN))
-):
-    """
-    Update order notes.
-    
-    Useful for adding internal notes about the order.
-    """
-    order = await Order.get(order_id)
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID '{order_id}' not found"
-        )
-    
-    # Check ownership for sellers
-    if current_user.role == UserRole.SELLER:
-        if order.seller_id != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only update your own orders"
-            )
-    
-    order.notes = notes
-    order.updated_at = datetime.utcnow()
-    await order.save()
-    
-    logger.info(f"Order '{order.tracking_id}' notes updated by '{current_user.username}'")
-    
-    return order_to_response(order)

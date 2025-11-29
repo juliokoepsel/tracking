@@ -11,6 +11,26 @@ from datetime import datetime
 from .enums import UserRole
 
 
+class Address(BaseModel):
+    """Address information for users (customers and sellers)"""
+    street: str = Field(..., min_length=1, max_length=200)
+    city: str = Field(..., min_length=1, max_length=100)
+    state: str = Field(..., min_length=1, max_length=100)
+    country: str = Field(..., min_length=1, max_length=100)
+    zip_code: str = Field(..., min_length=1, max_length=20)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "street": "123 Main St",
+                "city": "New York",
+                "state": "NY",
+                "country": "USA",
+                "zip_code": "10001"
+            }
+        }
+
+
 class User(Document):
     """
     User document stored in MongoDB.
@@ -24,6 +44,7 @@ class User(Document):
     role: UserRole
     full_name: str = Field(..., min_length=1, max_length=100)
     organization_id: Optional[str] = None  # For delivery people: logistics company ID
+    address: Optional[Address] = None  # For customers and sellers
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -43,6 +64,13 @@ class User(Document):
                 "email": "john@example.com",
                 "role": "CUSTOMER",
                 "full_name": "John Doe",
+                "address": {
+                    "street": "123 Main St",
+                    "city": "New York",
+                    "state": "NY",
+                    "country": "USA",
+                    "zip_code": "10001"
+                },
                 "is_active": True
             }
         }
@@ -56,6 +84,7 @@ class UserCreate(BaseModel):
     role: UserRole
     full_name: str = Field(..., min_length=1, max_length=100)
     organization_id: Optional[str] = None
+    address: Optional[Address] = None  # For customers and sellers
 
     class Config:
         json_schema_extra = {
@@ -64,7 +93,14 @@ class UserCreate(BaseModel):
                 "email": "john@example.com",
                 "password": "securepassword123",
                 "role": "CUSTOMER",
-                "full_name": "John Doe"
+                "full_name": "John Doe",
+                "address": {
+                    "street": "123 Main St",
+                    "city": "New York",
+                    "state": "NY",
+                    "country": "USA",
+                    "zip_code": "10001"
+                }
             }
         }
 
@@ -74,6 +110,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
     organization_id: Optional[str] = None
+    address: Optional[Address] = None
     is_active: Optional[bool] = None
 
     class Config:
@@ -81,6 +118,13 @@ class UserUpdate(BaseModel):
             "example": {
                 "email": "newemail@example.com",
                 "full_name": "John Updated Doe",
+                "address": {
+                    "street": "456 Oak Ave",
+                    "city": "Los Angeles",
+                    "state": "CA",
+                    "country": "USA",
+                    "zip_code": "90001"
+                },
                 "is_active": True
             }
         }
@@ -94,6 +138,7 @@ class UserResponse(BaseModel):
     role: UserRole
     full_name: str
     organization_id: Optional[str] = None
+    address: Optional[Address] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -107,6 +152,13 @@ class UserResponse(BaseModel):
                 "role": "CUSTOMER",
                 "full_name": "John Doe",
                 "organization_id": None,
+                "address": {
+                    "street": "123 Main St",
+                    "city": "New York",
+                    "state": "NY",
+                    "country": "USA",
+                    "zip_code": "10001"
+                },
                 "is_active": True,
                 "created_at": "2025-10-09T12:00:00Z",
                 "updated_at": "2025-10-09T12:00:00Z"

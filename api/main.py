@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 import logging
 import os
 
-from app.routes import delivery, users, orders, custody
+from app.routes import delivery, users, orders, shop_items
 from app.services.database import init_db, close_db
 from app.services.fabric_client import fabric_client
 
@@ -55,11 +55,11 @@ app = FastAPI(
     
     ## Features
     
-    * **Create Deliveries**: Register new package deliveries on the blockchain
-    * **Track Deliveries**: Monitor delivery status and location updates
-    * **Update Information**: Modify delivery details and status
-    * **Query History**: View complete transaction history for each delivery
-    * **Immutable Records**: All data stored on Hyperledger Fabric blockchain
+    * **Shop Items**: Sellers manage their product catalog
+    * **Orders**: Customers create orders, sellers confirm
+    * **Deliveries**: Track packages on blockchain
+    * **Custody Handoffs**: Chain of custody with handoff confirmations
+    * **Immutable Records**: All tracking data stored on Hyperledger Fabric
     
     ## Authentication
     
@@ -68,16 +68,16 @@ app = FastAPI(
     
     ## User Roles
     
-    - **ADMIN**: Full system access, user management
-    - **SELLER**: Create orders, manage own deliveries
-    - **DELIVERY_PERSON**: Update delivery status, handle handoffs
-    - **CUSTOMER**: View own orders, confirm delivery
+    - **ADMIN**: User management only (no order/delivery access)
+    - **SELLER**: Manage shop items, confirm orders, initiate handoffs
+    - **DELIVERY_PERSON**: Update location, handle handoffs
+    - **CUSTOMER**: Create orders, browse items, confirm delivery
     
-    ## Delivery Status Flow
+    ## Order Flow
     
-    1. **PENDING_SHIPPING**: Order created by seller
-    2. **PENDING_PICKUP**: Awaiting delivery person pickup
-    3. **IN_TRANSIT**: Package being transported
+    1. **PENDING_CONFIRMATION**: Customer creates order
+    2. **PENDING_PICKUP**: Seller confirms → Delivery created on blockchain
+    3. **IN_TRANSIT**: Delivery person picks up
     4. **PENDING_DELIVERY_CONFIRMATION**: Awaiting customer confirmation
     5. **CONFIRMED_DELIVERY**: Customer confirmed receipt
     
@@ -113,7 +113,7 @@ app.add_middleware(
 app.include_router(delivery.router)
 app.include_router(users.router)
 app.include_router(orders.router)
-app.include_router(custody.router)
+app.include_router(shop_items.router)
 
 
 @app.get("/", tags=["health"])

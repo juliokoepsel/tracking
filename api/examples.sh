@@ -2,6 +2,7 @@
 #
 # API Testing Examples
 # Collection of curl commands to test the Delivery Tracking API
+# Updated for the new order-based workflow with JWT authentication
 #
 
 API_URL="http://localhost:8000"
@@ -10,190 +11,292 @@ echo "========================================="
 echo "Package Delivery Tracking API - Examples"
 echo "========================================="
 echo ""
+echo "NOTE: This system uses JWT authentication."
+echo "All endpoints (except register/login) require a Bearer token."
+echo ""
 
 # Health Check
-echo "1. Health Check"
+echo "1. Health Check (no auth required)"
 echo "curl -X GET $API_URL/health"
 echo ""
 
-# Create Delivery
-echo "2. Create New Delivery"
+echo "========================================="
+echo "Authentication"
+echo "========================================="
+echo ""
+
+# Register Users
+echo "2. Register a Seller"
 cat << 'EOF'
-curl -X POST http://localhost:8000/api/v1/deliveries \
+curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryId": "DEL003",
-    "senderName": "Alice Cooper",
-    "senderAddress": "100 Rock Street, Austin, TX 78701",
-    "recipientName": "Bob Dylan",
-    "recipientAddress": "200 Music Ave, Nashville, TN 37201",
-    "packageWeight": 3.5,
-    "packageDimensions": {
-      "length": 40.0,
-      "width": 30.0,
-      "height": 20.0
-    },
-    "packageDescription": "Musical Equipment",
-    "estimatedDeliveryDate": "2025-10-20T15:00:00Z"
+    "username": "seller1",
+    "password": "password123",
+    "email": "seller@example.com",
+    "role": "SELLER"
   }'
 EOF
 echo ""
 echo ""
 
-# Get Delivery by ID
-echo "3. Get Delivery by ID"
-echo "curl -X GET $API_URL/api/v1/deliveries/DEL003"
-echo ""
-
-# Get All Deliveries
-echo "4. Get All Deliveries"
-echo "curl -X GET $API_URL/api/v1/deliveries"
-echo ""
-
-# Update Delivery
-echo "5. Update Delivery Status"
+echo "3. Register a Customer"
 cat << 'EOF'
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL003 \
+curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryStatus": "IN_TRANSIT"
+    "username": "customer1",
+    "password": "password123",
+    "email": "customer@example.com",
+    "role": "CUSTOMER"
   }'
 EOF
 echo ""
 echo ""
 
-# Update Delivery Address
-echo "6. Update Delivery Address"
+echo "4. Register a Delivery Person"
 cat << 'EOF'
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL003 \
+curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "recipientAddress": "300 New Address, Nashville, TN 37202"
+    "username": "driver1",
+    "password": "password123",
+    "email": "driver@example.com",
+    "role": "DELIVERY_PERSON"
   }'
 EOF
 echo ""
 echo ""
 
-# Get Deliveries by Status
-echo "7. Get Deliveries by Status"
-echo "curl -X GET $API_URL/api/v1/deliveries/status/IN_TRANSIT"
-echo ""
-
-# Get Delivery History
-echo "8. Get Delivery History"
-echo "curl -X GET $API_URL/api/v1/deliveries/DEL003/history"
-echo ""
-
-# Delete (Cancel) Delivery
-echo "9. Cancel Delivery"
-echo "curl -X DELETE $API_URL/api/v1/deliveries/DEL003"
-echo ""
-
-# API Documentation
-echo "10. View API Documentation"
-echo "Open in browser: $API_URL/docs"
-echo ""
-
-echo "========================================="
-echo "Additional Examples"
-echo "========================================="
-echo ""
-
-# Create Multiple Deliveries
-echo "11. Create Multiple Deliveries (run in sequence)"
+# Login
+echo "5. Login (get JWT token)"
 cat << 'EOF'
-# Delivery 1
-curl -X POST http://localhost:8000/api/v1/deliveries \
+curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryId": "DEL004",
-    "senderName": "Tech Store Inc",
-    "senderAddress": "500 Silicon Valley, CA 94000",
-    "recipientName": "John Developer",
-    "recipientAddress": "123 Code Street, Seattle, WA 98101",
-    "packageWeight": 1.8,
-    "packageDimensions": {
-      "length": 35.0,
-      "width": 25.0,
-      "height": 12.0
-    },
-    "packageDescription": "Laptop Computer",
-    "estimatedDeliveryDate": "2025-10-18T09:00:00Z"
+    "username": "seller1",
+    "password": "password123"
   }'
+# Response: {"access_token": "...", "token_type": "bearer"}
+EOF
+echo ""
+echo ""
 
-# Delivery 2
-curl -X POST http://localhost:8000/api/v1/deliveries \
+echo "========================================="
+echo "Shop Items (Seller)"
+echo "========================================="
+echo ""
+
+echo "6. Create a Shop Item (Seller only)"
+cat << 'EOF'
+curl -X POST http://localhost:8000/api/v1/shop-items \
+  -H "Authorization: Bearer <SELLER_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryId": "DEL005",
-    "senderName": "Book Publisher LLC",
-    "senderAddress": "789 Literature Ave, New York, NY 10001",
-    "recipientName": "Sarah Reader",
-    "recipientAddress": "456 Library Lane, Boston, MA 02101",
-    "packageWeight": 2.2,
-    "packageDimensions": {
-      "length": 28.0,
-      "width": 20.0,
-      "height": 8.0
-    },
-    "packageDescription": "Book Collection - 10 Books",
-    "estimatedDeliveryDate": "2025-10-16T14:00:00Z"
+    "name": "Gaming Laptop",
+    "description": "High-performance gaming laptop with RTX 4080",
+    "price_cents": 149900,
+    "stock": 25
+  }'
+EOF
+echo ""
+echo ""
+
+echo "7. List All Shop Items"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/shop-items \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "8. Get Shop Item by ID"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/shop-items/<ITEM_ID> \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "========================================="
+echo "Orders (Customer creates, Seller confirms)"
+echo "========================================="
+echo ""
+
+echo "9. Create an Order (Customer only)"
+cat << 'EOF'
+curl -X POST http://localhost:8000/api/v1/orders \
+  -H "Authorization: Bearer <CUSTOMER_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"item_id": "<SHOP_ITEM_ID>", "quantity": 1}
+    ],
+    "shipping_address": {
+      "street": "123 Main Street",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10001",
+      "country": "USA"
+    }
+  }'
+EOF
+echo ""
+echo ""
+
+echo "10. List Orders (filtered by role)"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/orders \
+  -H "Authorization: Bearer <TOKEN>"
+# Customer sees their orders
+# Seller sees orders for their items
+# Admin sees all orders
+EOF
+echo ""
+echo ""
+
+echo "11. Get Order Details"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/orders/<ORDER_ID> \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "12. Confirm Order → Creates Blockchain Delivery (Seller only)"
+cat << 'EOF'
+curl -X PUT http://localhost:8000/api/v1/orders/<ORDER_ID>/confirm \
+  -H "Authorization: Bearer <SELLER_TOKEN>"
+# This creates a delivery on the blockchain and links it to the order
+EOF
+echo ""
+echo ""
+
+echo "========================================="
+echo "Deliveries (Blockchain Operations)"
+echo "========================================="
+echo ""
+
+echo "13. List All Deliveries"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/deliveries \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "14. Get Delivery Details"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/deliveries/<DELIVERY_ID> \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "15. Get Delivery History (blockchain audit trail)"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/deliveries/<DELIVERY_ID>/history \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "========================================="
+echo "Handoff Operations (Chain of Custody)"
+echo "========================================="
+echo ""
+
+echo "16. Initiate Handoff (current holder only)"
+cat << 'EOF'
+# Seller hands off to Delivery Person
+curl -X POST http://localhost:8000/api/v1/deliveries/<DELIVERY_ID>/handoff/initiate \
+  -H "Authorization: Bearer <SELLER_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_user_id": "<DELIVERY_PERSON_ID>"
+  }'
+EOF
+echo ""
+echo ""
+
+echo "17. Confirm Handoff (recipient confirms pickup)"
+cat << 'EOF'
+curl -X POST http://localhost:8000/api/v1/deliveries/<DELIVERY_ID>/handoff/confirm \
+  -H "Authorization: Bearer <DELIVERY_PERSON_TOKEN>"
+EOF
+echo ""
+echo ""
+
+echo "18. Dispute Handoff (if there's a problem)"
+cat << 'EOF'
+curl -X POST http://localhost:8000/api/v1/deliveries/<DELIVERY_ID>/handoff/dispute \
+  -H "Authorization: Bearer <DELIVERY_PERSON_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Package was damaged on receipt"
   }'
 EOF
 echo ""
 echo ""
 
 echo "========================================="
-echo "Testing Complete Workflow"
+echo "User Management (Admin only)"
 echo "========================================="
 echo ""
-echo "1. Create a delivery (DEL006)"
-echo "2. Get the delivery details"
-echo "3. Update status to IN_TRANSIT"
-echo "4. Update status to DELIVERED"
-echo "5. View complete history"
+
+echo "19. Get Current User Profile"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/users/me \
+  -H "Authorization: Bearer <TOKEN>"
+EOF
+echo ""
 echo ""
 
+echo "20. Update Own Address"
 cat << 'EOF'
-# Step 1: Create
-curl -X POST http://localhost:8000/api/v1/deliveries \
+curl -X PUT http://localhost:8000/api/v1/users/me/address \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryId": "DEL006",
-    "senderName": "Express Shipping Co",
-    "senderAddress": "1000 Logistics Blvd, Chicago, IL 60601",
-    "recipientName": "Client Services",
-    "recipientAddress": "2000 Business Park, Miami, FL 33101",
-    "packageWeight": 5.0,
-    "packageDimensions": {
-      "length": 50.0,
-      "width": 40.0,
-      "height": 30.0
-    },
-    "packageDescription": "Office Supplies",
-    "estimatedDeliveryDate": "2025-10-14T11:00:00Z"
+    "street": "456 Oak Avenue",
+    "city": "Los Angeles",
+    "state": "CA",
+    "postal_code": "90001",
+    "country": "USA"
   }'
+EOF
+echo ""
+echo ""
 
-# Step 2: Get Details
-curl -X GET http://localhost:8000/api/v1/deliveries/DEL006
-
-# Step 3: Update to IN_TRANSIT
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL006 \
-  -H "Content-Type: application/json" \
-  -d '{"deliveryStatus": "IN_TRANSIT"}'
-
-# Step 4: Update to DELIVERED
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL006 \
-  -H "Content-Type: application/json" \
-  -d '{"deliveryStatus": "DELIVERED"}'
-
-# Step 5: View History
-curl -X GET http://localhost:8000/api/v1/deliveries/DEL006/history
+echo "21. List All Users (Admin only)"
+cat << 'EOF'
+curl -X GET http://localhost:8000/api/v1/users \
+  -H "Authorization: Bearer <ADMIN_TOKEN>"
 EOF
 echo ""
 echo ""
 
 echo "========================================="
+echo "Complete Workflow Example"
+echo "========================================="
+echo ""
+echo "Follow these steps to test the complete flow:"
+echo ""
+echo "1. Register seller, customer, and delivery person"
+echo "2. Login as seller, create shop items"
+echo "3. Login as customer, create order"
+echo "4. Login as seller, confirm order (creates delivery)"
+echo "5. Seller initiates handoff to delivery person"
+echo "6. Delivery person confirms handoff"
+echo "7. Delivery person initiates handoff to customer"
+echo "8. Customer confirms final delivery"
+echo "9. View delivery history for complete audit trail"
+echo ""
+
+echo "========================================="
+echo "Interactive Testing"
+echo "========================================="
+echo ""
 echo "For interactive testing, visit:"
 echo "  Swagger UI: $API_URL/docs"
 echo "  ReDoc: $API_URL/redoc"

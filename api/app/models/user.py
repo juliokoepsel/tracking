@@ -17,7 +17,7 @@ class Address(BaseModel):
     city: str = Field(..., min_length=1, max_length=100)
     state: str = Field(..., min_length=1, max_length=100)
     country: str = Field(..., min_length=1, max_length=100)
-    zip_code: str = Field(..., min_length=1, max_length=20)
+    postal_code: str = Field(..., min_length=1, max_length=20)
 
     class Config:
         json_schema_extra = {
@@ -26,7 +26,7 @@ class Address(BaseModel):
                 "city": "New York",
                 "state": "NY",
                 "country": "USA",
-                "zip_code": "10001"
+                "postal_code": "10001"
             }
         }
 
@@ -69,7 +69,7 @@ class User(Document):
                     "city": "New York",
                     "state": "NY",
                     "country": "USA",
-                    "zip_code": "10001"
+                    "postal_code": "10001"
                 },
                 "is_active": True
             }
@@ -99,7 +99,7 @@ class UserCreate(BaseModel):
                     "city": "New York",
                     "state": "NY",
                     "country": "USA",
-                    "zip_code": "10001"
+                    "postal_code": "10001"
                 }
             }
         }
@@ -123,7 +123,7 @@ class UserUpdate(BaseModel):
                     "city": "Los Angeles",
                     "state": "CA",
                     "country": "USA",
-                    "zip_code": "90001"
+                    "postal_code": "90001"
                 },
                 "is_active": True
             }
@@ -157,7 +157,7 @@ class UserResponse(BaseModel):
                     "city": "New York",
                     "state": "NY",
                     "country": "USA",
-                    "zip_code": "10001"
+                    "postal_code": "10001"
                 },
                 "is_active": True,
                 "created_at": "2025-10-09T12:00:00Z",

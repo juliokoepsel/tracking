@@ -206,7 +206,7 @@ SELLER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
 curl -X POST http://localhost:8000/api/v1/shop-items \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Laptop", "description": "Gaming laptop", "price_cents": 99900, "stock": 10}'
+  -d '{"name": "Laptop", "description": "Gaming laptop", "price_cents": 99900}'
 
 # 5. Login as customer
 CUSTOMER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
@@ -320,7 +320,6 @@ curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
   name: string,
   description: string,
   price_cents: number,
-  stock: number,
   is_active: boolean,
   created_at: timestamp,
   updated_at: timestamp

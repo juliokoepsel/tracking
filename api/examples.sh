@@ -95,8 +95,7 @@ curl -X POST http://localhost:8000/api/v1/shop-items \
   -d '{
     "name": "Gaming Laptop",
     "description": "High-performance gaming laptop with RTX 4080",
-    "price_cents": 149900,
-    "stock": 25
+    "price_cents": 149900
   }'
 EOF
 echo ""

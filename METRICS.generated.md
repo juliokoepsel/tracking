@@ -30,8 +30,8 @@
 | Python | 17 | 3282 |
 | YAML | 10 | 438 |
 | JSON | 2 | 332 |
-| Markdown | 7 | 2392 |
-| Shell | 5 | 665 |
+| Markdown | 7 | 2390 |
+| Shell | 5 | 664 |
 | Dockerfile | 2 | 64 |
 
-*Generated on Sun Nov 30 11:49:45 PM -03 2025*
+*Generated on Mon Dec  1 12:13:31 AM -03 2025*

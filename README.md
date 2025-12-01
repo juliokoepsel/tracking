@@ -347,7 +347,6 @@ docker-compose logs -f peer0.delivery.example.com
 - `name`: Product name
 - `description`: Product description
 - `price_cents`: Price in cents
-- `stock`: Available quantity
 - `is_active`: Whether item is available
 
 ## 🔐 Security Notes

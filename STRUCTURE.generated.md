@@ -177,5 +177,13 @@
 ├── OPERATIONS.md
 ├── README.md
 ├── STRUCTURE.generated.md
-└── TROUBLESHOOTING.md
+├── TROUBLESHOOTING.md
+└── ui
+    ├── css
+    │   └── style.css
+    ├── img
+    │   └── package.jpeg
+    ├── index.html
+    └── js
+        └── app.js
 ```

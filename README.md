@@ -94,10 +94,14 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 │                           DELIVERY FLOW (Blockchain)                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  PENDING_PICKUP ──► IN_TRANSIT ──► OUT_FOR_DELIVERY ──► DELIVERED          │
-│        │                 │                 │                                │
-│        ▼                 ▼                 ▼                                │
-│  DISPUTED_PICKUP   DISPUTED_TRANSIT  DISPUTED_DELIVERY                     │
+│  PENDING_PICKUP ──► PENDING_PICKUP_HANDOFF ──► IN_TRANSIT ──► DELIVERED    │
+│        │                    │                       │                       │
+│        │                    ▼                       ▼                       │
+│        │          DISPUTED_PICKUP_HANDOFF    DISPUTED_TRANSIT               │
+│        │                                                                    │
+│  Note: Sellers can only hand off to Delivery Persons (not directly to      │
+│        Customers). Delivery Persons can hand off to other Delivery Persons │
+│        or to Customers.                                                     │
 │                                                                             │
 │  Handoff Flow:                                                              │
 │  Seller → DeliveryPerson → [Multiple Transit Handoffs] → Customer          │
@@ -164,13 +168,14 @@ Authorization: Basic <base64(username:password)>
 | POST | `/api/v1/auth/register` | Register new user |
 | POST | `/api/v1/auth/login` | Verify credentials (returns user info) |
 
-### Users (Admin Only)
+### Users
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/users` | List all users |
+| GET | `/api/v1/users` | List all users (Admin) |
 | GET | `/api/v1/users/me` | Get current user profile |
 | PUT | `/api/v1/users/me/address` | Update own address |
-| GET | `/api/v1/users/{id}` | Get user by ID |
+| GET | `/api/v1/users/delivery-persons` | List delivery persons (Seller/DeliveryPerson/Admin) |
+| GET | `/api/v1/users/{id}` | Get user by ID (Admin) |
 | PUT | `/api/v1/users/{id}` | Update user (Admin) |
 | DELETE | `/api/v1/users/{id}` | Deactivate user (Admin) |
 
@@ -195,8 +200,9 @@ Authorization: Basic <base64(username:password)>
 ### Deliveries (Blockchain)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/deliveries` | Get all deliveries (role-filtered) |
-| GET | `/api/v1/deliveries/{id}` | Get delivery by ID |
+| GET | `/api/v1/deliveries` | Get my deliveries (Seller: their orders, DeliveryPerson: as custodian or pending handoff target, Customer: for their orders, Admin: all) |
+| GET | `/api/v1/deliveries/{id}` | Get delivery by ID (excludes package weight/dimensions) |
+| GET | `/api/v1/deliveries/{id}/address` | Get delivery address (DeliveryPerson/Admin) |
 | GET | `/api/v1/deliveries/{id}/history` | Get delivery history |
 
 ### Handoff Operations

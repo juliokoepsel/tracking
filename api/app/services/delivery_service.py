@@ -264,7 +264,11 @@ async def get_my_deliveries(
     caller_role: str
 ) -> Dict[str, Any]:
     """
-    Get all deliveries where caller is current custodian.
+    Get all deliveries where caller is involved.
+    
+    - Sellers/DeliveryPersons: deliveries where they are current custodian
+    - Customers: deliveries for their orders
+    - Admin: all deliveries
     
     Args:
         caller_id: The ID of the caller

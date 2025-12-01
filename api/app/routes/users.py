@@ -12,7 +12,8 @@ from app.models.enums import UserRole
 from app.services.auth import (
     get_current_user, 
     hash_password,
-    require_admin
+    require_admin,
+    require_roles
 )
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,33 @@ async def get_current_user_profile(
     Get the profile of the currently authenticated user.
     """
     return user_to_response(current_user)
+
+
+@router.get(
+    "/delivery-persons",
+    response_model=UserListResponse,
+    summary="List delivery persons",
+    description="Get list of delivery persons. Available to sellers, delivery persons, and admins."
+)
+async def list_delivery_persons(
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.ADMIN))
+):
+    """
+    List all active delivery persons.
+    Used for assigning deliveries to delivery personnel.
+    Available to sellers (for initial handoff), delivery persons (for transit handoffs), and admins.
+    """
+    users = await User.find({
+        "role": UserRole.DELIVERY_PERSON,
+        "is_active": True
+    }).to_list()
+    
+    return UserListResponse(
+        success=True,
+        message="Delivery persons retrieved successfully",
+        count=len(users),
+        data=[user_to_response(u) for u in users]
+    )
 
 
 @router.get(

@@ -173,15 +173,114 @@ class DeliveryHistoryResponse(BaseModel):
         }
 
 
+class DeliveryAddressResponse(BaseModel):
+    """Response for delivery address (limited info for delivery persons)"""
+    success: bool
+    message: str
+    data: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Delivery address retrieved successfully",
+                "data": {
+                    "recipient_name": "John Doe",
+                    "street": "123 Main St",
+                    "city": "New York",
+                    "state": "NY",
+                    "country": "USA",
+                    "postal_code": "10001"
+                }
+            }
+        }
+
+
 # ======================
 # Delivery Routes
 # ======================
 
 @router.get(
+    "/{delivery_id}/address",
+    response_model=DeliveryAddressResponse,
+    summary="Get delivery address",
+    description="Get the delivery address for a specific delivery. Returns recipient name and address. Delivery persons only."
+)
+async def get_delivery_address(
+    delivery_id: str,
+    current_user: User = Depends(require_roles(UserRole.DELIVERY_PERSON, UserRole.ADMIN))
+):
+    """
+    Get the delivery address for a delivery.
+    
+    Returns the customer's full name and address for delivery purposes.
+    Only available to delivery persons (who are involved) and admins.
+    """
+    from app.models.order import Order
+    
+    # First get the delivery to find the order
+    result = await delivery_service.get_delivery(
+        delivery_id=delivery_id,
+        caller_id=str(current_user.id),
+        caller_role=current_user.role.value
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=result.get("error", f"Delivery {delivery_id} not found")
+        )
+    
+    delivery_data = result.get("data", {})
+    order_id = delivery_data.get("orderId")
+    
+    if not order_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order ID not found in delivery"
+        )
+    
+    # Get the order to find customer
+    order = await Order.get(order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order {order_id} not found"
+        )
+    
+    # Get the customer to get their address
+    customer = await User.get(order.customer_id)
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Customer not found"
+        )
+    
+    if not customer.address:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Customer has no address configured"
+        )
+    
+    return DeliveryAddressResponse(
+        success=True,
+        message="Delivery address retrieved successfully",
+        data={
+            "recipient_name": customer.full_name,
+            "street": customer.address.street,
+            "city": customer.address.city,
+            "state": customer.address.state,
+            "country": customer.address.country,
+            "postal_code": customer.address.postal_code
+        }
+    )
+
+
+@router.get(
     "/{delivery_id}",
     response_model=DeliveryResponse,
     summary="Get delivery by ID",
-    description="Retrieve a specific delivery by its ID from the blockchain."
+    description="Retrieve a specific delivery by its ID from the blockchain. Package weight and dimensions are excluded from the response."
 )
 async def get_delivery(
     delivery_id: str,
@@ -191,6 +290,7 @@ async def get_delivery(
     Retrieve a delivery by its ID.
     
     Available to SELLER, CUSTOMER, DELIVERY_PERSON (if involved), and ADMIN.
+    Note: Package weight and dimensions are excluded from the response for privacy.
     """
     result = await delivery_service.get_delivery(
         delivery_id=delivery_id,
@@ -204,10 +304,16 @@ async def get_delivery(
             detail=result.get("error", f"Delivery {delivery_id} not found")
         )
     
+    # Filter out package weight and dimensions from response
+    delivery_data = result.get("data", {})
+    if delivery_data:
+        delivery_data.pop("packageWeight", None)
+        delivery_data.pop("packageDimensions", None)
+    
     return DeliveryResponse(
         success=True,
         message="Delivery retrieved successfully",
-        data=result.get("data")
+        data=delivery_data
     )
 
 
@@ -215,15 +321,17 @@ async def get_delivery(
     "",
     response_model=DeliveryListResponse,
     summary="Get my deliveries",
-    description="Get deliveries where current user is the custodian."
+    description="Get deliveries where current user is involved. Sellers/DeliveryPersons see deliveries where they are custodian. Customers see deliveries for their orders."
 )
 async def get_my_deliveries(
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.ADMIN))
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.CUSTOMER, UserRole.ADMIN))
 ):
     """
-    Get all deliveries where the current user is the custodian.
+    Get all deliveries where the current user is involved.
     
-    Available to SELLER, DELIVERY_PERSON, and ADMIN.
+    - **Sellers/DeliveryPersons**: See deliveries where they are current custodian
+    - **Customers**: See deliveries for their orders
+    - **Admin**: See all deliveries
     """
     result = await delivery_service.get_my_deliveries(
         caller_id=str(current_user.id),

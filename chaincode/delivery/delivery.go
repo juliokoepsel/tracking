@@ -42,7 +42,8 @@ type DeliveryStatus string
 
 const (
 	StatusPendingPickup               DeliveryStatus = "PENDING_PICKUP"
-	StatusDisputedPickup              DeliveryStatus = "DISPUTED_PICKUP"
+	StatusPendingPickupHandoff        DeliveryStatus = "PENDING_PICKUP_HANDOFF"
+	StatusDisputedPickupHandoff       DeliveryStatus = "DISPUTED_PICKUP_HANDOFF"
 	StatusInTransit                   DeliveryStatus = "IN_TRANSIT"
 	StatusPendingTransitHandoff       DeliveryStatus = "PENDING_TRANSIT_HANDOFF"
 	StatusDisputedTransitHandoff      DeliveryStatus = "DISPUTED_TRANSIT_HANDOFF"
@@ -334,6 +335,11 @@ func (c *DeliveryContract) InitiateHandoff(
 		return err
 	}
 
+	// Sellers can only hand off to delivery persons (not directly to customers)
+	if UserRole(callerRole) == RoleSeller && targetRole == RoleCustomer {
+		return fmt.Errorf("sellers can only hand off to delivery persons")
+	}
+
 	// Verify caller is current custodian
 	if delivery.CurrentCustodianID != callerID {
 		return fmt.Errorf("only the current custodian can initiate a handoff")
@@ -369,7 +375,8 @@ func (c *DeliveryContract) InitiateHandoff(
 	switch targetRole {
 	case RoleDeliveryPerson:
 		if delivery.DeliveryStatus == StatusPendingPickup {
-			// Keep as PENDING_PICKUP - driver needs to accept
+			// Seller initiating pickup handoff to delivery person
+			delivery.DeliveryStatus = StatusPendingPickupHandoff
 		} else {
 			delivery.DeliveryStatus = StatusPendingTransitHandoff
 		}
@@ -541,8 +548,8 @@ func (c *DeliveryContract) DisputeHandoff(
 
 	// Update delivery status to disputed
 	switch delivery.DeliveryStatus {
-	case StatusPendingPickup:
-		delivery.DeliveryStatus = StatusDisputedPickup
+	case StatusPendingPickupHandoff:
+		delivery.DeliveryStatus = StatusDisputedPickupHandoff
 	case StatusPendingTransitHandoff:
 		delivery.DeliveryStatus = StatusDisputedTransitHandoff
 	case StatusPendingDeliveryConfirmation:
@@ -617,8 +624,9 @@ func (c *DeliveryContract) CancelHandoff(
 
 	// Revert delivery status
 	switch delivery.DeliveryStatus {
-	case StatusPendingPickup:
-		// Keep as PENDING_PICKUP
+	case StatusPendingPickupHandoff:
+		// Revert to PENDING_PICKUP
+		delivery.DeliveryStatus = StatusPendingPickup
 	case StatusPendingTransitHandoff:
 		delivery.DeliveryStatus = StatusInTransit
 	case StatusPendingDeliveryConfirmation:
@@ -707,20 +715,23 @@ func (c *DeliveryContract) CancelDelivery(
 	return emitEvent(ctx, EventDeliveryStatusChanged, event)
 }
 
-// QueryDeliveriesByCustodian returns all deliveries held by a specific user
-// The caller can only query their own deliveries, or admin sees all
+// QueryDeliveriesByCustodian returns all deliveries where the user is involved
+// - Sellers/DeliveryPersons: deliveries where they are current custodian
+// - Customers: deliveries where they are the customer
+// - Admin: all deliveries (when custodianID is empty) or filtered by custodian
 func (c *DeliveryContract) QueryDeliveriesByCustodian(
 	ctx contractapi.TransactionContextInterface,
 	custodianID string,
 	callerID string,
 	callerRole string,
 ) ([]*Delivery, error) {
-	// Validate role - include admin for read access
-	if err := validateRole(callerRole, RoleSeller, RoleDeliveryPerson, RoleAdmin); err != nil {
+	// Validate role - include customer and admin for read access
+	if err := validateRole(callerRole, RoleSeller, RoleDeliveryPerson, RoleCustomer, RoleAdmin); err != nil {
 		return nil, err
 	}
 
 	isAdmin := UserRole(callerRole) == RoleAdmin
+	isCustomer := UserRole(callerRole) == RoleCustomer
 
 	// Non-admin users can only query their own deliveries
 	if !isAdmin && custodianID != callerID {
@@ -746,17 +757,30 @@ func (c *DeliveryContract) QueryDeliveriesByCustodian(
 			continue
 		}
 
-		// Admin sees all deliveries matching custodian, others only see their own
+		// Admin sees all deliveries (optionally filtered by custodian)
 		if isAdmin {
-			if delivery.CurrentCustodianID == custodianID {
+			if custodianID == "" || delivery.CurrentCustodianID == custodianID {
 				deliveries = append(deliveries, &delivery)
 			}
-		} else {
-			// For non-admin, also check involvement
-			if delivery.CurrentCustodianID == custodianID {
-				if validateInvolvement(&delivery, callerID, callerRole) == nil {
-					deliveries = append(deliveries, &delivery)
-				}
+		} else if isCustomer {
+			// Customers see deliveries where they are the customer
+			if delivery.CustomerID == callerID {
+				deliveries = append(deliveries, &delivery)
+			}
+		} else if UserRole(callerRole) == RoleSeller {
+			// Sellers see deliveries where they are the seller
+			if delivery.SellerID == callerID {
+				deliveries = append(deliveries, &delivery)
+			}
+		} else if UserRole(callerRole) == RoleDeliveryPerson {
+			// Delivery persons see deliveries where:
+			// 1. They are current custodian, OR
+			// 2. They are the target of a pending handoff
+			isCustodian := delivery.CurrentCustodianID == callerID
+			isPendingRecipient := delivery.PendingHandoff != nil && delivery.PendingHandoff.ToUserID == callerID
+
+			if isCustodian || isPendingRecipient {
+				deliveries = append(deliveries, &delivery)
 			}
 		}
 	}

@@ -26,7 +26,7 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 │  └──────────────────────────────────────────────────────┘   │
 └───────────────┬─────────────────────────┬───────────────────┘
                 │                         │
-                │ Fabric SDK              │ Motor/Beanie
+                │ Fabric CLI              │ Motor/Beanie
                 ▼                         ▼
 ┌───────────────────────────┐   ┌─────────────────────────────┐
 │  Hyperledger Fabric       │   │     MongoDB Container       │
@@ -306,7 +306,7 @@ tracking/
         │   ├── orders.py         # Order management
         │   └── delivery.py       # Blockchain delivery operations
         └── services/             # Business logic
-            ├── fabric_client.py  # Fabric SDK wrapper
+            ├── fabric_client.py  # Fabric CLI wrapper
             ├── order_service.py  # Order business logic
             ├── delivery_service.py # Delivery operations
             ├── shop_item_service.py # Shop item logic

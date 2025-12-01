@@ -62,7 +62,7 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 - **Handoff Tracking**: Full custody transfer recording between roles
 - **Two-Party Confirmation**: Both parties must confirm transfers
 - **Dispute System**: Ability to dispute handoffs with reason tracking
-- **Chaincode Events**: Real-time status sync via blockchain events
+- **Order Status Sync**: MongoDB orders automatically sync after blockchain operations
 
 ### Off-Chain Data
 - **MongoDB Integration**: Users, orders, and shop items stored off-chain

@@ -77,9 +77,9 @@
   - **Services**: 
     - `fabric_client.py`: Blockchain interaction
     - `order_service.py`: Order business logic
-    - `delivery_service.py`: Delivery operations
+    - `delivery_service.py`: Delivery operations with order status sync
     - `shop_item_service.py`: Shop item logic
-    - `event_listener.py`: Chaincode event sync
+    - `event_listener.py`: Manual sync utilities (placeholder for future event subscription)
     - `database.py`: MongoDB initialization
 - **Features**:
   - HTTP Basic Authentication
@@ -393,7 +393,7 @@ services:
 4. **Dependency Injection**: FastAPI's dependency system for auth
 5. **Chain of Responsibility**: Fabric's endorsement flow
 6. **Command Pattern**: Chaincode functions as commands
-7. **Event-Driven**: Chaincode events for status synchronization
+7. **Immediate Sync**: Order status synced after blockchain operations
 8. **Factory Pattern**: Chaincode contract creation
 
 ### Key Features
@@ -406,7 +406,7 @@ services:
 ✓ **HTTP Basic Authentication**: Secure username/password access
 ✓ **Role-Based Access**: Admin, Seller, DeliveryPerson, Customer
 ✓ **Off-Chain Storage**: PII and sensitive data in MongoDB
-✓ **Chaincode Events**: Real-time status synchronization
+✓ **Order Status Sync**: Automatic MongoDB sync after blockchain operations
 ✓ **Automatic Documentation**: Interactive API docs
 ✓ **Containerized**: Portable and reproducible
 ✓ **Scalable**: Can add more peers and organizations

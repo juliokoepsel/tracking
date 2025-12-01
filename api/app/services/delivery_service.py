@@ -2,9 +2,39 @@
 Delivery Service - Business logic for delivery operations
 Handles blockchain interactions for delivery tracking
 """
+import logging
 from typing import Dict, Any
 
 from ..services.fabric_client import fabric_client
+from ..services import order_service
+from ..models.enums import DeliveryStatus
+
+logger = logging.getLogger(__name__)
+
+
+async def _sync_order_status_from_delivery(delivery_id: str, caller_id: str, caller_role: str) -> None:
+    """
+    Sync order status in MongoDB by reading delivery from blockchain.
+    
+    Args:
+        delivery_id: The ID of the delivery
+        caller_id: Caller ID to read delivery
+        caller_role: Caller role to read delivery
+    """
+    try:
+        # Read the delivery to get current status
+        result = fabric_client.read_delivery(delivery_id, caller_id, caller_role)
+        if result.get("success"):
+            data = result.get("data", {})
+            if isinstance(data, dict):
+                new_status = data.get("deliveryStatus")
+                if new_status:
+                    status_enum = DeliveryStatus(new_status)
+                    order = await order_service.update_order_status_by_delivery_id(delivery_id, status_enum)
+                    if order:
+                        logger.info(f"Order status synced for delivery {delivery_id}: {new_status}")
+    except Exception as e:
+        logger.warning(f"Failed to sync order status for delivery {delivery_id}: {e}")
 
 
 async def get_delivery(delivery_id: str, caller_id: str, caller_role: str) -> Dict[str, Any]:
@@ -70,11 +100,17 @@ async def cancel_delivery(
     Returns:
         Dictionary with result
     """
-    return fabric_client.cancel_delivery(
+    result = fabric_client.cancel_delivery(
         delivery_id=delivery_id,
         caller_id=caller_id,
         caller_role=caller_role
     )
+    
+    # Sync order status if successful
+    if result.get("success"):
+        await _sync_order_status_from_delivery(delivery_id, caller_id, caller_role)
+    
+    return result
 
 
 async def initiate_handoff(
@@ -97,13 +133,19 @@ async def initiate_handoff(
     Returns:
         Dictionary with result
     """
-    return fabric_client.initiate_handoff(
+    result = fabric_client.initiate_handoff(
         delivery_id=delivery_id,
         to_user_id=to_user_id,
         to_role=to_role,
         caller_id=caller_id,
         caller_role=caller_role
     )
+    
+    # Sync order status if successful
+    if result.get("success"):
+        await _sync_order_status_from_delivery(delivery_id, caller_id, caller_role)
+    
+    return result
 
 
 async def confirm_handoff(
@@ -136,7 +178,7 @@ async def confirm_handoff(
     Returns:
         Dictionary with result
     """
-    return fabric_client.confirm_handoff(
+    result = fabric_client.confirm_handoff(
         delivery_id=delivery_id,
         city=city,
         state=state,
@@ -148,6 +190,12 @@ async def confirm_handoff(
         caller_id=caller_id,
         caller_role=caller_role
     )
+    
+    # Sync order status if successful
+    if result.get("success"):
+        await _sync_order_status_from_delivery(delivery_id, caller_id, caller_role)
+    
+    return result
 
 
 async def dispute_handoff(
@@ -168,12 +216,18 @@ async def dispute_handoff(
     Returns:
         Dictionary with result
     """
-    return fabric_client.dispute_handoff(
+    result = fabric_client.dispute_handoff(
         delivery_id=delivery_id,
         reason=reason,
         caller_id=caller_id,
         caller_role=caller_role
     )
+    
+    # Sync order status if successful
+    if result.get("success"):
+        await _sync_order_status_from_delivery(delivery_id, caller_id, caller_role)
+    
+    return result
 
 
 async def cancel_handoff(
@@ -192,11 +246,17 @@ async def cancel_handoff(
     Returns:
         Dictionary with result
     """
-    return fabric_client.cancel_handoff(
+    result = fabric_client.cancel_handoff(
         delivery_id=delivery_id,
         caller_id=caller_id,
         caller_role=caller_role
     )
+    
+    # Sync order status if successful
+    if result.get("success"):
+        await _sync_order_status_from_delivery(delivery_id, caller_id, caller_role)
+    
+    return result
 
 
 async def get_my_deliveries(

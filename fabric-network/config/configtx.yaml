@@ -1,14 +1,17 @@
----
 ################################################################################
 #
-#   Section: Organizations
+#   ConfigTX for Multi-Org Delivery Tracking Network
+#
+#   - 3 Peer Organizations: PlatformOrg, SellersOrg, LogisticsOrg
+#   - Raft-based ordering service with 3 orderers
 #
 ################################################################################
+
 Organizations:
   - &OrdererOrg
     Name: OrdererOrg
     ID: OrdererMSP
-    MSPDir: ../organizations/ordererOrganizations/example.com/msp
+    MSPDir: ../organizations/ordererOrganizations/orderer.example.com/msp
     Policies:
       Readers:
         Type: Signature
@@ -20,33 +23,75 @@ Organizations:
         Type: Signature
         Rule: "OR('OrdererMSP.admin')"
     OrdererEndpoints:
-      - orderer.example.com:7050
+      - orderer1.orderer.example.com:7050
+      - orderer2.orderer.example.com:7050
+      - orderer3.orderer.example.com:7050
 
-  - &DeliveryOrg
-    Name: DeliveryOrgMSP
-    ID: DeliveryOrgMSP
-    MSPDir: ../organizations/peerOrganizations/delivery.example.com/msp
+  - &PlatformOrg
+    Name: PlatformOrgMSP
+    ID: PlatformOrgMSP
+    MSPDir: ../organizations/peerOrganizations/platform.example.com/msp
     Policies:
       Readers:
         Type: Signature
-        Rule: "OR('DeliveryOrgMSP.admin', 'DeliveryOrgMSP.peer', 'DeliveryOrgMSP.client')"
+        Rule: "OR('PlatformOrgMSP.admin', 'PlatformOrgMSP.peer', 'PlatformOrgMSP.client')"
       Writers:
         Type: Signature
-        Rule: "OR('DeliveryOrgMSP.admin', 'DeliveryOrgMSP.client')"
+        Rule: "OR('PlatformOrgMSP.admin', 'PlatformOrgMSP.client')"
       Admins:
         Type: Signature
-        Rule: "OR('DeliveryOrgMSP.admin')"
+        Rule: "OR('PlatformOrgMSP.admin')"
       Endorsement:
         Type: Signature
-        Rule: "OR('DeliveryOrgMSP.peer')"
+        Rule: "OR('PlatformOrgMSP.peer')"
     AnchorPeers:
-      - Host: peer0.delivery.example.com
+      - Host: peer0.platform.example.com
         Port: 7051
 
+  - &SellersOrg
+    Name: SellersOrgMSP
+    ID: SellersOrgMSP
+    MSPDir: ../organizations/peerOrganizations/sellers.example.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('SellersOrgMSP.admin', 'SellersOrgMSP.peer', 'SellersOrgMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('SellersOrgMSP.admin', 'SellersOrgMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('SellersOrgMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('SellersOrgMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.sellers.example.com
+        Port: 8051
+
+  - &LogisticsOrg
+    Name: LogisticsOrgMSP
+    ID: LogisticsOrgMSP
+    MSPDir: ../organizations/peerOrganizations/logistics.example.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('LogisticsOrgMSP.admin', 'LogisticsOrgMSP.peer', 'LogisticsOrgMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('LogisticsOrgMSP.admin', 'LogisticsOrgMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('LogisticsOrgMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('LogisticsOrgMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.logistics.example.com
+        Port: 9051
+
 ################################################################################
-#
-#   SECTION: Capabilities
-#
+#   Capabilities
 ################################################################################
 Capabilities:
   Channel: &ChannelCapabilities
@@ -57,9 +102,7 @@ Capabilities:
     V2_0: true
 
 ################################################################################
-#
-#   SECTION: Application
-#
+#   Application
 ################################################################################
 Application: &ApplicationDefaults
   Organizations:
@@ -83,14 +126,28 @@ Application: &ApplicationDefaults
     <<: *ApplicationCapabilities
 
 ################################################################################
-#
-#   SECTION: Orderer
-#
+#   Orderer - Raft consensus
 ################################################################################
 Orderer: &OrdererDefaults
-  OrdererType: solo
+  OrdererType: etcdraft
   Addresses:
-    - orderer.example.com:7050
+    - orderer1.orderer.example.com:7050
+    - orderer2.orderer.example.com:7050
+    - orderer3.orderer.example.com:7050
+  EtcdRaft:
+    Consenters:
+      - Host: orderer1.orderer.example.com
+        Port: 7050
+        ClientTLSCert: ../organizations/ordererOrganizations/orderer.example.com/orderers/orderer1.orderer.example.com/tls/server.crt
+        ServerTLSCert: ../organizations/ordererOrganizations/orderer.example.com/orderers/orderer1.orderer.example.com/tls/server.crt
+      - Host: orderer2.orderer.example.com
+        Port: 7050
+        ClientTLSCert: ../organizations/ordererOrganizations/orderer.example.com/orderers/orderer2.orderer.example.com/tls/server.crt
+        ServerTLSCert: ../organizations/ordererOrganizations/orderer.example.com/orderers/orderer2.orderer.example.com/tls/server.crt
+      - Host: orderer3.orderer.example.com
+        Port: 7050
+        ClientTLSCert: ../organizations/ordererOrganizations/orderer.example.com/orderers/orderer3.orderer.example.com/tls/server.crt
+        ServerTLSCert: ../organizations/ordererOrganizations/orderer.example.com/orderers/orderer3.orderer.example.com/tls/server.crt
   BatchTimeout: 2s
   BatchSize:
     MaxMessageCount: 10
@@ -112,9 +169,7 @@ Orderer: &OrdererDefaults
       Rule: "ANY Writers"
 
 ################################################################################
-#
-#   CHANNEL
-#
+#   Channel
 ################################################################################
 Channel: &ChannelDefaults
   Policies:
@@ -131,11 +186,11 @@ Channel: &ChannelDefaults
     <<: *ChannelCapabilities
 
 ################################################################################
-#
-#   Profile
-#
+#   Profiles
 ################################################################################
 Profiles:
+  # Genesis block profile is no longer needed with channel participation API
+  # Keeping for reference/compatibility
   DeliveryOrdererGenesis:
     <<: *ChannelDefaults
     Orderer:
@@ -144,17 +199,29 @@ Profiles:
         - *OrdererOrg
       Capabilities:
         <<: *OrdererCapabilities
-    Consortiums:
-      DeliveryConsortium:
-        Organizations:
-          - *DeliveryOrg
-
-  DeliveryChannel:
-    Consortium: DeliveryConsortium
-    <<: *ChannelDefaults
     Application:
       <<: *ApplicationDefaults
       Organizations:
-        - *DeliveryOrg
+        - *PlatformOrg
+        - *SellersOrg
+        - *LogisticsOrg
+      Capabilities:
+        <<: *ApplicationCapabilities
+
+  # Application channel profile - must include Orderer section for osnadmin
+  DeliveryChannel:
+    <<: *ChannelDefaults
+    Orderer:
+      <<: *OrdererDefaults
+      Organizations:
+        - *OrdererOrg
+      Capabilities:
+        <<: *OrdererCapabilities
+    Application:
+      <<: *ApplicationDefaults
+      Organizations:
+        - *PlatformOrg
+        - *SellersOrg
+        - *LogisticsOrg
       Capabilities:
         <<: *ApplicationCapabilities

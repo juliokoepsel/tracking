@@ -1,24 +1,59 @@
----
 ################################################################################
 #
-#   Crypto Config for Delivery Tracking Network
+#   Crypto Config for Multi-Org Delivery Tracking Network
+#
+#   Organizations:
+#   - PlatformOrg: Platform admins and customers
+#   - SellersOrg: Sellers who create orders and deliveries  
+#   - LogisticsOrg: Delivery personnel who transport packages
 #
 ################################################################################
 
 OrdererOrgs:
   - Name: Orderer
-    Domain: example.com
+    Domain: orderer.example.com
     EnableNodeOUs: true
     Specs:
-      - Hostname: orderer
-    Users:
-      Count: 1
+      - Hostname: orderer1
+        SANS:
+          - localhost
+          - orderer1.orderer.example.com
+      - Hostname: orderer2
+        SANS:
+          - localhost
+          - orderer2.orderer.example.com
+      - Hostname: orderer3
+        SANS:
+          - localhost
+          - orderer3.orderer.example.com
 
 PeerOrgs:
-  - Name: DeliveryOrg
-    Domain: delivery.example.com
+  - Name: PlatformOrg
+    Domain: platform.example.com
     EnableNodeOUs: true
     Template:
       Count: 1
+      SANS:
+        - localhost
+    Users:
+      Count: 1
+
+  - Name: SellersOrg
+    Domain: sellers.example.com
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
+    Users:
+      Count: 1
+
+  - Name: LogisticsOrg
+    Domain: logistics.example.com
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
     Users:
       Count: 1

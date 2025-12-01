@@ -1,398 +1,431 @@
-# 📦 Package Delivery Tracking System with Hyperledger Fabric
+# Blockchain Delivery Tracking System
 
-> A complete blockchain-based package delivery tracking system built with Hyperledger Fabric, FastAPI, and MongoDB
+A production-ready multi-organization Hyperledger Fabric delivery tracking system with a NestJS API. Each user gets their own X.509 certificate for blockchain identity, enabling true per-user transaction signing and immutable audit trails.
 
-[![Hyperledger Fabric](https://img.shields.io/badge/Hyperledger%20Fabric-2.5-blue.svg)](https://www.hyperledger.org/use/fabric)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)](https://fastapi.tiangolo.com/)
-[![Go](https://img.shields.io/badge/Go-1.20-00ADD8.svg)](https://golang.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Latest-47A248.svg)](https://www.mongodb.com/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
+## Features
 
-A production-ready, distributed package delivery tracking system leveraging blockchain technology for immutable record-keeping, chain of custody tracking, and multi-role authentication.
+- **Multi-Org Blockchain Network**: 3 organizations (Platform, Sellers, Logistics) with Raft consensus
+- **Per-User X.509 Identities**: Each user enrolled via Fabric CA gets their own blockchain identity
+- **Role-Based Access Control**: Customers, Sellers, Delivery Persons with organization-based permissions
+- **Two-Phase Custody Handoffs**: Secure package transfers with initiate/confirm flow
+- **Dispute Handling**: Recipients can dispute handoffs with reasons recorded on blockchain
+- **Immutable Audit Trail**: Full history of all delivery state changes with transaction IDs
+- **Full TLS/HTTPS**: All services communicate over TLS (Fabric network, API, MongoDB, UI)
 
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Client Applications                      │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       │ REST API (HTTP Basic Auth)
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│              FastAPI Service (Docker Container)              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Routes → Auth → Services → Fabric Client / MongoDB  │   │
-│  └──────────────────────────────────────────────────────┘   │
-└───────────────┬─────────────────────────┬───────────────────┘
-                │                         │
-                │ Fabric CLI              │ Motor/Beanie
-                ▼                         ▼
-┌───────────────────────────┐   ┌─────────────────────────────┐
-│  Hyperledger Fabric       │   │     MongoDB Container       │
-│  ┌──────────┐ ┌─────────┐ │   │  ┌─────────┐ ┌──────────┐  │
-│  │  Peer    │ │ Orderer │ │   │  │ Users   │ │ Orders   │  │
-│  └──────────┘ └─────────┘ │   │  ├─────────┤ ├──────────┤  │
-│  ┌──────────────────────┐ │   │  │ShopItems│ │Deliveries│  │
-│  │ Chaincode (Go)       │ │   │  └─────────┘ └──────────┘  │
-│  │ • Delivery Tracking  │ │   └─────────────────────────────┘
-│  │ • Role Enforcement   │ │
-│  │ • Handoff Workflow   │ │
-│  └──────────────────────┘ │
-└───────────────────────────┘
-```
-
-## 📦 Features
-
-### Core Features
-- **Order Management**: Customers create orders, sellers confirm to create blockchain deliveries
-- **Shop Items**: Sellers manage product catalogs with pricing
-- **Blockchain Delivery Tracking**: All delivery data stored immutably on Hyperledger Fabric
-- **Smart Contracts**: Go-based chaincode with role validation and chaincode events
-- **RESTful API**: FastAPI endpoints with HTTP Basic authentication
-- **Docker Containerization**: Fully containerized deployment
-
-### Authentication & Authorization
-- **HTTP Basic Authentication**: Secure username/password API access
-- **Multi-Role System**: Customer, Seller, Delivery Person, Admin roles
-- **Role-Based Access Control**: Endpoints restricted by user role
-- **Chaincode Role Enforcement**: Role validation at the blockchain level
-
-### Chain of Custody
-- **Handoff Tracking**: Full custody transfer recording between roles
-- **Two-Party Confirmation**: Both parties must confirm transfers
-- **Dispute System**: Ability to dispute handoffs with reason tracking
-- **Order Status Sync**: MongoDB orders automatically sync after blockchain operations
-
-### Off-Chain Data
-- **MongoDB Integration**: Users, orders, and shop items stored off-chain
-- **Beanie ODM**: Async MongoDB document modeling
-- **Pre-seeded Admin**: System starts with admin user
-
-## 👥 User Roles
-
-| Role | Permissions |
-|------|-------------|
-| **ADMIN** | User management only (create, update, deactivate users) |
-| **SELLER** | Manage shop items, confirm orders → create deliveries, initiate handoffs |
-| **DELIVERY_PERSON** | Confirm/dispute handoffs, transit custody transfers |
-| **CUSTOMER** | Create orders, view own orders, confirm final delivery |
-
-## 📊 Order & Delivery Flow
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              ORDER FLOW (MongoDB)                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  Customer creates order    Seller confirms order    Delivery created        │
-│  ────────────────────► ──────────────────────► ────────────────────►       │
-│  PENDING_CONFIRMATION       CONFIRMED              (links to delivery_id)   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           DELIVERY FLOW (Blockchain)                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  PENDING_PICKUP ──► PENDING_PICKUP_HANDOFF ──► IN_TRANSIT ──► DELIVERED    │
-│        │                    │                       │                       │
-│        │                    ▼                       ▼                       │
-│        │          DISPUTED_PICKUP_HANDOFF    DISPUTED_TRANSIT               │
-│        │                                                                    │
-│  Note: Sellers can only hand off to Delivery Persons (not directly to      │
-│        Customers). Delivery Persons can hand off to other Delivery Persons │
-│        or to Customers.                                                     │
-│                                                                             │
-│  Handoff Flow:                                                              │
-│  Seller → DeliveryPerson → [Multiple Transit Handoffs] → Customer          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           Docker Network (fabric_network)                       │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐    │
+│  │                        Raft Orderer Cluster                             │    │
+│  │   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐                 │    │
+│  │   │  orderer1     │ │  orderer2     │ │  orderer3     │                 │    │
+│  │   │  :7050        │ │  :8050        │ │  :9050        │                 │    │
+│  │   └───────────────┘ └───────────────┘ └───────────────┘                 │    │
+│  └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐    │
+│  │                        Peer Organizations                               │    │
+│  │                                                                         │    │
+│  │  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐         │    │
+│  │  │   PlatformOrg    │ │   SellersOrg     │ │  LogisticsOrg    │         │    │
+│  │  │                  │ │                  │ │                  │         │    │
+│  │  │  peer0 :7051     │ │  peer0 :9051     │ │  peer0 :11051    │         │    │
+│  │  │  ca    :7054     │ │  ca    :8054     │ │  ca    :9054     │         │    │
+│  │  │                  │ │                  │ │                  │         │    │
+│  │  │  Users:          │ │  Users:          │ │  Users:          │         │    │
+│  │  │  - Customers     │ │  - Sellers       │ │  - Drivers       │         │    │
+│  │  │  - Admins        │ │                  │ │                  │         │    │
+│  │  └──────────────────┘ └──────────────────┘ └──────────────────┘         │    │
+│  └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                 │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐               │
+│  │  NestJS API      │  │  MongoDB         │  │  Chaincode       │               │
+│  │  :3000           │  │  :27017          │  │  (delivery)      │               │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘               │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- Docker (installed ✓)
-- Docker Compose (installed ✓)
-- At least 4GB RAM available for Docker
+- Docker & Docker Compose
+- At least 8GB RAM
+- At least 15GB disk space
+- **mkcert** (for TLS certificates) - Install with:
+  - Ubuntu/Debian: `sudo apt install mkcert libnss3-tools`
+  - macOS: `brew install mkcert`
+  - Windows: `choco install mkcert`
+  - Then run: `mkcert -install`
 
-### Installation
+### Start Everything
 
-1. **Clone and navigate to the project**
-   ```bash
-   cd /home/leviathan/Desktop/tracking
-   ```
+```bash
+# Generate TLS certificates first (only needed once)
+make generate-certs
 
-2. **Copy environment file**
-   ```bash
-   cp .env-example .env
-   ```
+# Start the entire system (network + chaincode + API)
+make start
 
-3. **Start the Fabric network**
-   ```bash
-   ./fabric-network/scripts/start-network.sh
-   ```
-
-4. **Deploy the chaincode**
-   ```bash
-   ./fabric-network/scripts/deploy-chaincode.sh
-   ```
-
-5. **Start all services (API + MongoDB)**
-   ```bash
-   docker-compose up -d
-   ```
-
-6. **Access the API documentation**
-   Open your browser: http://localhost:8000/docs
-
-### Default Admin Credentials
-
-```
-Username: admin
-Password: admin
+# Or with sudo if needed
+sudo make start
 ```
 
-## 📚 API Endpoints
+This will:
+1. Generate TLS certificates for nginx, NestJS, and MongoDB
+2. Generate crypto material for all organizations
+3. Start 3 Raft orderers
+4. Start 3 peers (one per org)
+5. Start 3 Fabric CAs with TLS
+6. Create and join the delivery channel
+7. Deploy the delivery chaincode
+8. Start MongoDB (TLS enabled)
+9. Start the NestJS API (HTTPS)
+10. Start the nginx UI (HTTPS)
+
+### Access Points
+
+- **UI**: https://localhost
+- **API**: https://localhost:3000/api/v1
+- **Health**: https://localhost:3000/api/v1/health
+
+### Verify System Health
+
+```bash
+# Using curl with -k to skip certificate verification
+curl -k https://localhost:3000/api/v1/health
+```
+
+## API Usage
 
 ### Authentication
-All endpoints require HTTP Basic authentication (except registration). Include credentials in the Authorization header:
-```
-Authorization: Basic <base64(username:password)>
-```
 
-### Auth
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user |
-| POST | `/api/v1/auth/login` | Verify credentials (returns user info) |
+#### Register Users
 
-### Users
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/users` | List all users (Admin) |
-| GET | `/api/v1/users/me` | Get current user profile |
-| PUT | `/api/v1/users/me/address` | Update own address |
-| GET | `/api/v1/users/delivery-persons` | List delivery persons (Seller/DeliveryPerson/Admin) |
-| GET | `/api/v1/users/{id}` | Get user by ID (Admin) |
-| PUT | `/api/v1/users/{id}` | Update user (Admin) |
-| DELETE | `/api/v1/users/{id}` | Deactivate user (Admin) |
-
-### Shop Items (Seller)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/shop-items` | Create shop item (Seller) |
-| GET | `/api/v1/shop-items` | List all shop items |
-| GET | `/api/v1/shop-items/{id}` | Get item by ID |
-| PUT | `/api/v1/shop-items/{id}` | Update item (Owner/Admin) |
-| DELETE | `/api/v1/shop-items/{id}` | Delete item (Owner/Admin) |
-
-### Orders
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/orders` | Create order (Customer) |
-| GET | `/api/v1/orders` | List orders (role-filtered) |
-| GET | `/api/v1/orders/{id}` | Get order details |
-| PUT | `/api/v1/orders/{id}/confirm` | Confirm order → creates delivery (Seller) |
-| PUT | `/api/v1/orders/{id}/cancel` | Cancel order |
-
-### Deliveries (Blockchain)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/deliveries` | Get my deliveries (Seller: their orders, DeliveryPerson: as custodian or pending handoff target, Customer: for their orders, Admin: all) |
-| GET | `/api/v1/deliveries/{id}` | Get delivery by ID (excludes package weight/dimensions) |
-| GET | `/api/v1/deliveries/{id}/address` | Get delivery address (DeliveryPerson/Admin) |
-| GET | `/api/v1/deliveries/{id}/history` | Get delivery history |
-
-### Handoff Operations
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/deliveries/{id}/handoff/initiate` | Initiate handoff to next party |
-| POST | `/api/v1/deliveries/{id}/handoff/confirm` | Confirm pending handoff |
-| POST | `/api/v1/deliveries/{id}/handoff/dispute` | Dispute handoff with reason |
-
-### Example: Complete Order Flow
-
-**1. Customer creates an order:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/orders \
-  -H "Authorization: Bearer <customer_token>" \
+# Register a seller (enrolled to SellersOrg)
+curl -k -X POST https://localhost:3000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "items": [
-      {"item_id": "shop_item_id_here", "quantity": 2}
-    ],
-    "shipping_address": {
-      "street": "123 Main St",
-      "city": "New York",
+    "email": "seller@example.com",
+    "password": "password123",
+    "name": "Test Seller",
+    "role": "SELLER",
+    "address": {
+      "street": "123 Seller St",
+      "city": "NYC",
       "state": "NY",
-      "postal_code": "10001",
-      "country": "USA"
+      "zipCode": "10001",
+      "country": "US"
     }
   }'
-```
 
-**2. Seller confirms the order (creates blockchain delivery):**
-```bash
-curl -X PUT http://localhost:8000/api/v1/orders/{order_id}/confirm \
-  -H "Authorization: Bearer <seller_token>"
-```
-
-**3. Seller initiates handoff to delivery person:**
-```bash
-curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/initiate \
-  -H "Authorization: Bearer <seller_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"to_user_id": "delivery_person_id"}'
-```
-
-**4. Delivery person confirms pickup (with location and package data):**
-```bash
-curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/confirm \
-  -H "Authorization: Bearer <delivery_token>" \
+# Register a customer (enrolled to PlatformOrg)
+curl -k -X POST https://localhost:3000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "city": "New York",
-    "state": "NY",
-    "country": "USA",
-    "package_weight": 2.5,
-    "dimension_length": 30,
-    "dimension_width": 20,
-    "dimension_height": 10
+    "email": "customer@example.com",
+    "password": "password123",
+    "name": "Test Customer",
+    "role": "CUSTOMER",
+    "address": {
+      "street": "456 Customer Ave",
+      "city": "Brooklyn",
+      "state": "NY",
+      "zipCode": "11201",
+      "country": "US"
+    }
+  }'
+
+# Register a delivery person (enrolled to LogisticsOrg)
+curl -k -X POST https://localhost:3000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "driver@example.com",
+    "password": "password123",
+    "name": "Test Driver",
+    "role": "DELIVERY_PERSON",
+    "vehicleInfo": "White Van - ABC123"
   }'
 ```
 
-## 🗂️ Project Structure
+#### Login
+
+```bash
+# Login returns a JWT token
+curl -k -X POST https://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "seller@example.com", "password": "password123"}'
+
+# Store token for subsequent requests
+export TOKEN="<jwt_token_from_response>"
+```
+
+### Shop Items (Sellers Only)
+
+```bash
+# Create a shop item
+curl -k -X POST https://localhost:3000/api/v1/shop-items \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "name": "Wireless Headphones",
+    "description": "Bluetooth 5.0 over-ear headphones",
+    "priceInCents": 9999
+  }'
+
+# List your shop items
+curl -k https://localhost:3000/api/v1/shop-items \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Orders (Customers)
+
+```bash
+# Create an order (as customer)
+curl -k -X POST https://localhost:3000/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -d '{
+    "sellerId": "<seller_user_id>",
+    "items": [{"itemId": "<shop_item_id>", "quantity": 1}]
+  }'
+
+# Seller confirms order (creates delivery on blockchain)
+curl -k -X POST https://localhost:3000/api/v1/orders/<order_id>/confirm \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -d '{
+    "packageWeight": 0.5,
+    "packageLength": 20,
+    "packageWidth": 15,
+    "packageHeight": 5,
+    "city": "NYC",
+    "state": "NY",
+    "country": "US"
+  }'
+```
+
+### Deliveries (Blockchain Operations)
+
+```bash
+# Get delivery details
+curl -k https://localhost:3000/api/v1/deliveries/<delivery_id> \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get deliveries assigned to me
+curl -k https://localhost:3000/api/v1/deliveries/my \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get full blockchain history
+curl -k https://localhost:3000/api/v1/deliveries/<delivery_id>/history \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Handoff Flow
+
+The system uses a two-phase handoff process for secure custody transfers:
+
+```bash
+# 1. Seller initiates handoff to driver
+curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/initiate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -d '{"toUserId": "<driver_id>", "toRole": "DELIVERY_PERSON"}'
+
+# 2. Driver confirms pickup
+curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/confirm \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DRIVER_TOKEN" \
+  -d '{"city": "NYC", "state": "NY", "country": "US"}'
+
+# 3. Driver updates location during transit
+curl -X PUT https://localhost:3000/api/v1/deliveries/<delivery_id>/location \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DRIVER_TOKEN" \
+  -d '{"city": "Brooklyn", "state": "NY", "country": "US"}'
+
+# 4. Driver initiates handoff to customer
+curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/initiate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DRIVER_TOKEN" \
+  -d '{"toUserId": "<customer_id>", "toRole": "CUSTOMER"}'
+
+# 5. Customer confirms delivery
+curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/confirm \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -d '{"city": "Brooklyn", "state": "NY", "country": "US"}'
+```
+
+### Dispute Handling
+
+Recipients can dispute a pending handoff:
+
+```bash
+# Recipient disputes the handoff
+curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/dispute \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $RECIPIENT_TOKEN" \
+  -d '{"reason": "Package appears damaged, refusing to accept custody"}'
+```
+
+The delivery status changes to `DISPUTED_*` and requires manual resolution.
+
+## Delivery Status Flow
+
+```
+PENDING_PICKUP
+    │
+    ├──(seller initiates handoff)──► PENDING_PICKUP_HANDOFF
+    │                                      │
+    │                                      ├──(driver confirms)──► IN_TRANSIT
+    │                                      │                           │
+    │                                      └──(driver disputes)──► DISPUTED_PICKUP_HANDOFF
+    │
+    └──(customer cancels)──► CANCELLED
+
+IN_TRANSIT
+    │
+    ├──(driver initiates to customer)──► PENDING_DELIVERY_CONFIRMATION
+    │                                           │
+    │                                           ├──(customer confirms)──► CONFIRMED_DELIVERY ✓
+    │                                           │
+    │                                           └──(customer disputes)──► DISPUTED_DELIVERY
+    │
+    └──(driver initiates to another driver)──► PENDING_TRANSIT_HANDOFF
+                                                     │
+                                                     ├──(driver2 confirms)──► IN_TRANSIT
+                                                     │
+                                                     └──(driver2 disputes)──► DISPUTED_TRANSIT_HANDOFF
+```
+
+## Project Structure
 
 ```
 tracking/
-├── .env                          # Environment configuration
-├── docker-compose.yml            # Docker orchestration
-├── README.md                     # This file
-│
-├── fabric-network/               # Hyperledger Fabric network
-│   ├── config/                   # Network configuration files
-│   │   ├── configtx.yaml
-│   │   └── crypto-config.yaml
-│   ├── scripts/                  # Utility scripts
-│   │   ├── start-network.sh
-│   │   ├── deploy-chaincode.sh
-│   │   └── cleanup.sh
-│   └── organizations/            # Crypto material (generated)
-│
-├── chaincode/                    # Go smart contracts
+├── chaincode/
 │   └── delivery/
-│       ├── main.go               # Chaincode entry point
-│       ├── delivery.go           # Delivery contract logic
-│       └── go.mod
-│
-└── api/                          # FastAPI application
-    ├── Dockerfile
-    ├── requirements.txt
-    ├── main.py
-    ├── connection-profile.json
-    └── app/
-        ├── __init__.py
-        ├── models/               # Pydantic/Beanie models
-        │   ├── enums.py          # Role, OrderStatus, DeliveryStatus
-        │   ├── user.py           # User model with Address
-        │   ├── shop_item.py      # ShopItem model (seller products)
-        │   └── order.py          # Order model with items
-        ├── routes/               # API endpoints
-        │   ├── auth.py           # JWT authentication
-        │   ├── users.py          # User management
-        │   ├── shop_items.py     # Shop item CRUD
-        │   ├── orders.py         # Order management
-        │   └── delivery.py       # Blockchain delivery operations
-        └── services/             # Business logic
-            ├── fabric_client.py  # Fabric CLI wrapper
-            ├── order_service.py  # Order business logic
-            ├── delivery_service.py # Delivery operations
-            ├── shop_item_service.py # Shop item logic
-            ├── event_listener.py # Chaincode event sync
-            └── database.py       # MongoDB initialization
+│       ├── delivery.go      # Smart contract implementation
+│       └── main.go          # Chaincode entry point
+├── fabric-network/
+│   ├── config/
+│   │   ├── configtx.yaml    # Channel & org configuration
+│   │   └── crypto-config.yaml
+│   ├── organizations/       # Generated crypto material
+│   └── scripts/
+│       ├── start-network.sh
+│       ├── deploy-chaincode.sh
+│       └── cleanup.sh
+├── nestjs-api/
+│   └── src/
+│       ├── auth/            # JWT authentication
+│       ├── users/           # User management (MongoDB)
+│       ├── shop-items/      # Shop items (MongoDB)
+│       ├── orders/          # Orders (MongoDB)
+│       ├── deliveries/      # Delivery operations (Blockchain)
+│       └── fabric/          # Fabric Gateway & CA services
+├── docker-compose.yml       # All services
+├── Makefile                 # Convenience commands
+└── README.md
 ```
 
-## 🔧 Development
+## Chaincode Functions
 
-### Stop all services
+| Function | Description | Allowed Roles |
+|----------|-------------|---------------|
+| `CreateDelivery` | Create new delivery record | SELLER |
+| `ReadDelivery` | Read delivery details | Any participant |
+| `UpdateLocation` | Update current location | DELIVERY_PERSON |
+| `InitiateHandoff` | Start custody transfer | SELLER, DELIVERY_PERSON |
+| `ConfirmHandoff` | Accept custody transfer | DELIVERY_PERSON, CUSTOMER |
+| `DisputeHandoff` | Reject custody transfer | DELIVERY_PERSON, CUSTOMER |
+| `CancelHandoff` | Cancel pending handoff | Handoff initiator |
+| `CancelDelivery` | Cancel delivery | CUSTOMER (before pickup) |
+| `QueryDeliveriesByCustodian` | List user's deliveries | Any authenticated user |
+| `QueryDeliveriesByStatus` | List by status | Any authenticated user |
+| `GetDeliveryHistory` | Get blockchain history | Any participant |
+
+## Make Commands
+
 ```bash
-docker-compose down
+make help              # Show all available commands
+make start             # Start entire system
+make stop              # Stop all services
+make clean             # Stop and clean all data
+make restart           # Restart everything
+make logs              # View all logs
+make logs-nestjs       # View NestJS API logs
+make logs-peer         # View peer logs
+make status            # Show container status
+make health            # Check API health
 ```
 
-### Clean up and restart
+## Environment Variables
+
+Key configuration in `.env`:
+
+```env
+# Fabric Network
+CHANNEL_NAME=deliverychannel
+CHAINCODE_NAME=delivery
+CHAINCODE_VERSION=1.0
+
+# MongoDB
+MONGO_HOST=mongodb
+MONGO_PORT=27017
+MONGO_DATABASE=delivery_tracking
+
+# JWT
+JWT_SECRET=<your-secret>
+JWT_EXPIRES_IN=24h
+
+# API
+API_PORT=3000
+```
+
+## Troubleshooting
+
+### Check Container Status
 ```bash
-./fabric-network/scripts/cleanup.sh
-./fabric-network/scripts/start-network.sh
+docker ps -a
+make status
 ```
 
-### View logs
+### View Logs
 ```bash
-# API logs
-docker-compose logs -f api
+# All logs
+make logs
 
-# Fabric peer logs
-docker-compose logs -f peer0.delivery.example.com
+# Specific service
+docker logs delivery-api -f
+docker logs peer0.platform.example.com -f
+docker logs ca.platform.example.com -f
 ```
 
-## 📊 Data Models
+### Reset Everything
+```bash
+make clean
+make start
+```
 
-### Blockchain Delivery (Chaincode)
-- `delivery_id`: Unique identifier
-- `order_id`: Reference to MongoDB order
-- `seller_id`: Seller user ID
-- `customer_id`: Customer user ID
-- `current_holder_id`: Current custody holder
-- `status`: Delivery status enum
-- `pending_handoff_to`: User ID for pending handoff
-- `created_at`: Creation timestamp
-- `updated_at`: Last update timestamp
+### Common Issues
 
-### Order (MongoDB)
-- `customer_id`: Customer who created the order
-- `seller_id`: Seller who owns the items
-- `items`: List of {item_id, quantity, price_cents}
-- `total_cents`: Total order amount
-- `status`: PENDING_CONFIRMATION | CONFIRMED | CANCELLED
-- `delivery_id`: Link to blockchain delivery (after confirmation)
-- `shipping_address`: Delivery address
+**"x509: certificate signed by unknown authority"**
+- Fabric CAs must use cryptogen-generated keys for the trust chain to work
+- Check docker-compose.yml CA environment variables
 
-### ShopItem (MongoDB)
-- `seller_id`: Owner of the item
-- `name`: Product name
-- `description`: Product description
-- `price_cents`: Price in cents
-- `is_active`: Whether item is available
+**"Failed to get caller identity"**
+- User may not be enrolled with Fabric CA
+- Check wallet identities in MongoDB
 
-## 🔐 Security Notes
+**Chaincode errors**
+- Check peer logs: `docker logs peer0.platform.example.com`
+- Check chaincode container logs
 
-- All delivery transactions are recorded on the blockchain (immutable)
-- JWT authentication with configurable expiration
-- Role-based access control at API and chaincode level
-- Chaincode validates caller role for all operations
-- MongoDB stores sensitive user data off-chain
-- TLS enabled for peer-to-peer communication
-- Admin credentials stored in .env file (change in production)
+## License
 
-## 📚 Documentation Map
-
-- **README.md** - Overview, quick start, and project structure
-- **ARCHITECTURE.md** - System design, components, and data flows
-- **DEPLOYMENT.md** - Step-by-step deployment and configuration
-- **OPERATIONS.md** - Commands, workflows, and common tasks
-- **TROUBLESHOOTING.md** - Deep-dive issue resolution
-- **STRUCTURE.generated.md** - Auto-generated file tree and statistics
-- **METRICS.generated.md** - Auto-generated project metrics
-
-## 📝 License
-
-MIT License
-
-## 👥 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📞 Support
-
-For issues and questions, please open an issue in the repository.
+MIT

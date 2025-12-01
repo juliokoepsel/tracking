@@ -1,6 +1,7 @@
 /**
  * MARKETPLACE - Main Application JavaScript
  * A simple UI for the blockchain-based delivery tracking system
+ * Updated for NestJS API with JWT authentication
  */
 
 // ============================================
@@ -9,23 +10,28 @@
 
 const API_BASE = '/api/v1';
 let currentUser = null;
-let authCredentials = null;
+let jwtToken = null;
 
-// Store credentials in sessionStorage
-function setAuth(username, password) {
-    authCredentials = btoa(`${username}:${password}`);
-    sessionStorage.setItem('auth', authCredentials);
-    sessionStorage.setItem('username', username);
+// Store JWT token in sessionStorage
+function setAuth(token, user) {
+    jwtToken = token;
+    sessionStorage.setItem('jwt', token);
+    sessionStorage.setItem('user', JSON.stringify(user));
 }
 
 function getAuth() {
-    return sessionStorage.getItem('auth');
+    return sessionStorage.getItem('jwt');
+}
+
+function getStoredUser() {
+    const user = sessionStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
 }
 
 function clearAuth() {
-    sessionStorage.removeItem('auth');
-    sessionStorage.removeItem('username');
-    authCredentials = null;
+    sessionStorage.removeItem('jwt');
+    sessionStorage.removeItem('user');
+    jwtToken = null;
     currentUser = null;
 }
 
@@ -33,9 +39,9 @@ function clearAuth() {
 async function apiRequest(endpoint, method = 'GET', body = null) {
     const headers = {};
     
-    const auth = getAuth();
-    if (auth) {
-        headers['Authorization'] = `Basic ${auth}`;
+    const token = getAuth();
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
     }
     
     const options = { method, headers };
@@ -55,17 +61,15 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     const data = await response.json();
     
     if (!response.ok) {
-        // Handle different error formats from FastAPI
+        // Handle different error formats from NestJS
         let errorMessage = 'API Error';
-        if (typeof data.detail === 'string') {
-            errorMessage = data.detail;
-        } else if (Array.isArray(data.detail)) {
-            // Validation errors come as array of {loc, msg, type}
-            errorMessage = data.detail.map(err => err.msg || JSON.stringify(err)).join(', ');
-        } else if (data.detail) {
-            errorMessage = JSON.stringify(data.detail);
-        } else if (data.message) {
+        if (typeof data.message === 'string') {
             errorMessage = data.message;
+        } else if (Array.isArray(data.message)) {
+            // Validation errors come as array
+            errorMessage = data.message.join(', ');
+        } else if (data.error) {
+            errorMessage = data.error;
         }
         throw new Error(errorMessage);
     }
@@ -165,7 +169,7 @@ function updateNavbar() {
     const navLinks = document.getElementById('nav-links');
     const userInfo = document.getElementById('user-info');
     
-    userInfo.innerHTML = `${currentUser.username} <span class="role-badge">${currentUser.role}</span>`;
+    userInfo.innerHTML = `${currentUser.fullName || currentUser.email} <span class="role-badge">${currentUser.role}</span>`;
     
     let links = '';
     
@@ -232,9 +236,26 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     showLoading();
     
     try {
-        setAuth(username, password);
-        currentUser = await apiRequest('/users/me');
-        showToast('Welcome!', `Logged in as ${currentUser.username}`, 'success');
+        // Login with NestJS JWT auth
+        const loginResponse = await fetch(`${API_BASE}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        
+        const loginData = await loginResponse.json();
+        
+        if (!loginResponse.ok) {
+            throw new Error(loginData.message || 'Login failed');
+        }
+        
+        // Store JWT and normalize user info (API uses full_name but we use fullName internally)
+        const user = loginData.user;
+        user.fullName = user.full_name || user.fullName;  // normalize
+        setAuth(loginData.access_token, user);
+        currentUser = user;
+        
+        showToast('Welcome!', `Logged in as ${currentUser.fullName || currentUser.username}`, 'success');
         showDashboard();
     } catch (error) {
         clearAuth();
@@ -244,7 +265,84 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
 });
 
-// Register form removed - users are managed by admin
+// Register functions
+function showRegisterModal() {
+    document.getElementById('register-form').reset();
+    document.getElementById('reg-address-fields').style.display = 'block';
+    document.getElementById('reg-vehicle-fields').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('registerModal')).show();
+}
+
+function toggleRegisterFields() {
+    const role = document.getElementById('reg-role').value;
+    const addressFields = document.getElementById('reg-address-fields');
+    const vehicleFields = document.getElementById('reg-vehicle-fields');
+    
+    if (role === 'DELIVERY_PERSON') {
+        addressFields.style.display = 'none';
+        vehicleFields.style.display = 'block';
+    } else {
+        addressFields.style.display = 'block';
+        vehicleFields.style.display = 'none';
+    }
+}
+
+async function registerUser() {
+    const username = document.getElementById('reg-username').value.trim();
+    const fullName = document.getElementById('reg-fullname').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const role = document.getElementById('reg-role').value;
+    
+    if (!username || !fullName || !email || !password) {
+        showToast('Error', 'Please fill in all required fields', 'error');
+        return;
+    }
+    
+    const userData = { username, fullName, email, password, role };
+    
+    // Add role-specific fields
+    if (role === 'DELIVERY_PERSON') {
+        const vehicleType = document.getElementById('reg-vehicle-type').value.trim();
+        const licensePlate = document.getElementById('reg-license-plate').value.trim();
+        if (vehicleType && licensePlate) {
+            userData.vehicleInfo = { type: vehicleType, licensePlate };
+        }
+    } else {
+        // Structured address for customers and sellers
+        const street = document.getElementById('reg-street').value.trim();
+        const city = document.getElementById('reg-city').value.trim();
+        const state = document.getElementById('reg-state').value.trim();
+        const postalCode = document.getElementById('reg-postal-code').value.trim();
+        const country = document.getElementById('reg-country').value.trim();
+        
+        if (street && city && state && postalCode && country) {
+            userData.address = { street, city, state, postalCode, country };
+        }
+    }
+    
+    showLoading();
+    try {
+        const response = await fetch(`${API_BASE}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message);
+        }
+        
+        bootstrap.Modal.getInstance(document.getElementById('registerModal')).hide();
+        showToast('Success!', 'Account created! You can now login.', 'success');
+    } catch (error) {
+        showToast('Registration Failed', error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
 
 function logout() {
     clearAuth();
@@ -262,7 +360,8 @@ async function loadShop() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const items = await apiRequest('/shop-items');
+        const response = await apiRequest('/shop-items');
+        const items = response.data || response;
         
         let html = `
             <div class="section-header">
@@ -271,7 +370,7 @@ async function loadShop() {
             <div class="row">
         `;
         
-        if (items.length === 0) {
+        if (!items || items.length === 0) {
             html += `
                 <div class="col-12">
                     <div class="empty-state">
@@ -286,20 +385,20 @@ async function loadShop() {
                 html += `
                     <div class="col-md-4 col-lg-3 mb-4 fade-in">
                         <div class="card shop-item-card">
-                            <img src="/static/img/package.jpeg" class="card-img-top" alt="${item.name}">
+                            <img src="/img/package.jpeg" class="card-img-top" alt="${item.name}">
                             <div class="card-body">
                                 <h5 class="card-title">${item.name}</h5>
                                 <p class="card-text text-muted small">${item.description || 'No description'}</p>
                                 <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <span class="price-tag">${formatPrice(item.price)}</span>
-                                    <span class="quantity-badge">${item.quantity} in stock</span>
+                                    <span class="price-tag">${formatPrice(item.priceInCents)}</span>
+                                    <span class="quantity-badge">${item.isActive ? 'Available' : 'Unavailable'}</span>
                                 </div>
-                                <button class="btn btn-primary w-100" onclick="buyItem('${item.id}')" ${item.quantity < 1 ? 'disabled' : ''}>
-                                    <i class="ti ti-shopping-cart-plus me-1"></i>${item.quantity < 1 ? 'Out of Stock' : 'Buy Now'}
+                                <button class="btn btn-primary w-100" onclick="buyItem('${item.id}', '${item.sellerId}')" ${!item.isActive ? 'disabled' : ''}>
+                                    <i class="ti ti-shopping-cart-plus me-1"></i>${!item.isActive ? 'Unavailable' : 'Buy Now'}
                                 </button>
                             </div>
                             <div class="card-footer text-muted small">
-                                <i class="ti ti-user me-1"></i>Seller: ${item.seller_id}
+                                <i class="ti ti-user me-1"></i>Seller: ${item.sellerId ? item.sellerId.substring(0, 8) : 'N/A'}...
                             </div>
                         </div>
                     </div>
@@ -314,24 +413,21 @@ async function loadShop() {
     }
 }
 
-async function buyItem(itemId) {
+async function buyItem(itemId, sellerId) {
     showLoading();
     try {
-        // First get the item details to get seller_id and price
-        const item = await apiRequest(`/shop-items/${itemId}`);
-        
-        // Create order with correct structure
+        // Create order with correct structure for NestJS API
         const order = await apiRequest('/orders', 'POST', {
-            seller_id: item.seller_id,
+            sellerId: sellerId,
             items: [
                 {
-                    item_id: itemId,
-                    quantity: 1,
-                    price_at_purchase: item.price  // price is already in cents
+                    itemId: itemId,
+                    quantity: 1
                 }
             ]
         });
-        showToast('Order Placed!', `Order #${order.id.substring(0, 8)} created successfully.`, 'success');
+        const orderId = order.data?.id || order.id;
+        showToast('Order Placed!', `Order #${orderId.substring(0, 8)} created successfully.`, 'success');
         loadMyOrders();
     } catch (error) {
         showToast('Error', error.message, 'error');
@@ -345,8 +441,8 @@ async function loadMyOrders() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/orders');
-        const orders = extractList(response);
+        const response = await apiRequest('/orders/my');
+        const orders = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -354,13 +450,12 @@ async function loadMyOrders() {
             </div>
         `;
         
-        if (orders.length === 0) {
+        if (!orders || orders.length === 0) {
             html += `
                 <div class="empty-state">
                     <i class="ti ti-clipboard-off"></i>
                     <h4>No orders yet</h4>
                     <p>Start shopping to see your orders here!</p>
-                    <button class="btn btn-primary" onclick="loadShop()"><i class="ti ti-shopping-cart me-1"></i>Go to Shop</button>
                 </div>
             `;
         } else {
@@ -380,8 +475,8 @@ async function loadMyDeliveries() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/deliveries');
-        const deliveries = extractList(response);
+        const response = await apiRequest('/deliveries/my');
+        const deliveries = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -389,7 +484,7 @@ async function loadMyDeliveries() {
             </div>
         `;
         
-        if (deliveries.length === 0) {
+        if (!deliveries || deliveries.length === 0) {
             html += `
                 <div class="empty-state">
                     <i class="ti ti-truck-off"></i>
@@ -409,6 +504,23 @@ async function loadMyDeliveries() {
     }
 }
 
+async function cancelOrder(orderId) {
+    if (!confirm('Are you sure you want to cancel this order?')) {
+        return;
+    }
+    
+    showLoading();
+    try {
+        await apiRequest(`/orders/${orderId}/cancel`, 'PUT');
+        showToast('Success!', 'Order cancelled.', 'success');
+        loadMyOrders();
+    } catch (error) {
+        showToast('Error', error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
 // ============================================
 // Seller Views
 // ============================================
@@ -418,7 +530,8 @@ async function loadMyItems() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const items = await apiRequest('/shop-items/my-items');
+        const response = await apiRequest('/shop-items');
+        const items = response.data || response;
         
         let html = `
             <div class="section-header">
@@ -430,7 +543,7 @@ async function loadMyItems() {
             <div class="row">
         `;
         
-        if (items.length === 0) {
+        if (!items || items.length === 0) {
             html += `
                 <div class="col-12">
                     <div class="empty-state">
@@ -445,13 +558,13 @@ async function loadMyItems() {
                 html += `
                     <div class="col-md-4 col-lg-3 mb-4 fade-in">
                         <div class="card shop-item-card">
-                            <img src="/static/img/package.jpeg" class="card-img-top" alt="${item.name}">
+                            <img src="/img/package.jpeg" class="card-img-top" alt="${item.name}">
                             <div class="card-body">
                                 <h5 class="card-title">${item.name}</h5>
                                 <p class="card-text text-muted small">${item.description || 'No description'}</p>
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <span class="price-tag">${formatPrice(item.price)}</span>
-                                    <span class="quantity-badge">${item.quantity} in stock</span>
+                                    <span class="price-tag">${formatPrice(item.priceInCents)}</span>
+                                    <span class="quantity-badge">${item.isActive ? 'Active' : 'Inactive'}</span>
                                 </div>
                             </div>
                         </div>
@@ -474,7 +587,12 @@ async function createShopItem() {
     
     showLoading();
     try {
-        await apiRequest('/shop-items/', 'POST', { name, description, price });
+        // NestJS API uses priceInCents
+        await apiRequest('/shop-items', 'POST', { 
+            name, 
+            description, 
+            priceInCents: Math.round(price * 100) 
+        });
         bootstrap.Modal.getInstance(document.getElementById('createItemModal')).hide();
         document.getElementById('create-item-form').reset();
         showToast('Success!', 'Item created successfully.', 'success');
@@ -491,8 +609,8 @@ async function loadSellerOrders() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/orders');
-        const orders = extractList(response);
+        const response = await apiRequest('/orders/my');
+        const orders = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -500,7 +618,7 @@ async function loadSellerOrders() {
             </div>
         `;
         
-        if (orders.length === 0) {
+        if (!orders || orders.length === 0) {
             html += `
                 <div class="empty-state">
                     <i class="ti ti-clipboard-off"></i>
@@ -525,8 +643,8 @@ async function loadSellerDeliveries() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/deliveries');
-        const deliveries = extractList(response);
+        const response = await apiRequest('/deliveries/my');
+        const deliveries = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -534,7 +652,7 @@ async function loadSellerDeliveries() {
             </div>
         `;
         
-        if (deliveries.length === 0) {
+        if (!deliveries || deliveries.length === 0) {
             html += `
                 <div class="empty-state">
                     <i class="ti ti-truck-off"></i>
@@ -571,13 +689,23 @@ async function submitConfirmOrder() {
     const width = parseFloat(document.getElementById('package-width').value);
     const height = parseFloat(document.getElementById('package-height').value);
     
+    // Use seller's address from currentUser
+    const sellerAddress = currentUser.address || {};
+    const city = sellerAddress.city || 'Unknown City';
+    const state = sellerAddress.state || 'N/A';
+    const country = sellerAddress.country || 'Unknown';
+    
     showLoading();
     try {
+        // NestJS API uses camelCase
         await apiRequest(`/orders/${orderId}/confirm`, 'POST', {
-            package_weight: weight,
-            package_length: length,
-            package_width: width,
-            package_height: height
+            packageWeight: weight,
+            packageLength: length,
+            packageWidth: width,
+            packageHeight: height,
+            city: city,
+            state: state,
+            country: country
         });
         bootstrap.Modal.getInstance(document.getElementById('confirmOrderModal')).hide();
         showToast('Success!', 'Order confirmed and delivery created.', 'success');
@@ -595,12 +723,12 @@ async function showAssignDeliveryModal(deliveryId) {
     // Load delivery persons
     try {
         const response = await apiRequest('/users');
-        const users = extractList(response);
+        const users = response.data || extractList(response);
         const deliveryPersons = users.filter(u => u.role === 'DELIVERY_PERSON');
         
         const select = document.getElementById('delivery-person-select');
         select.innerHTML = deliveryPersons.map(u => 
-            `<option value="${u.id}">${u.username}</option>`
+            `<option value="${u.id}">${u.fullName || u.email}</option>`
         ).join('');
         
         if (deliveryPersons.length === 0) {
@@ -625,8 +753,8 @@ async function assignDelivery() {
     showLoading();
     try {
         await apiRequest(`/deliveries/${deliveryId}/handoff/initiate`, 'POST', {
-            to_user_id: deliveryPersonId,
-            to_role: 'DELIVERY_PERSON'
+            toUserId: deliveryPersonId,
+            toRole: 'DELIVERY_PERSON'
         });
         bootstrap.Modal.getInstance(document.getElementById('createDeliveryModal')).hide();
         showToast('Success!', 'Delivery assigned to delivery person.', 'success');
@@ -647,8 +775,8 @@ async function loadAssignedDeliveries() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/deliveries');
-        const deliveries = extractList(response);
+        const response = await apiRequest('/deliveries/my');
+        const deliveries = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -656,7 +784,7 @@ async function loadAssignedDeliveries() {
             </div>
         `;
         
-        if (deliveries.length === 0) {
+        if (!deliveries || deliveries.length === 0) {
             html += `
                 <div class="empty-state">
                     <i class="ti ti-truck-off"></i>
@@ -730,16 +858,16 @@ async function updateHandoffRecipientOptions() {
     const select = document.getElementById('handoff-to-user');
     
     if (toRole === 'DELIVERY_PERSON') {
-        // Load delivery persons
+        // Load delivery persons using dedicated endpoint (accessible to sellers)
         try {
             const response = await apiRequest('/users/delivery-persons');
-            const persons = extractList(response);
+            const persons = response.data || extractList(response);
             
             if (persons.length === 0) {
                 select.innerHTML = '<option value="">No delivery persons available</option>';
             } else {
                 select.innerHTML = persons.map(p => 
-                    `<option value="${p.id}">${p.username}${p.full_name ? ' (' + p.full_name + ')' : ''}</option>`
+                    `<option value="${p.id}">${p.fullName || p.username}</option>`
                 ).join('');
             }
         } catch (error) {
@@ -768,8 +896,8 @@ async function initiateHandoff() {
     showLoading();
     try {
         await apiRequest(`/deliveries/${deliveryId}/handoff/initiate`, 'POST', {
-            to_user_id: toUserId,
-            to_role: toRole
+            toUserId: toUserId,
+            toRole: toRole
         });
         
         bootstrap.Modal.getInstance(document.getElementById('initiateHandoffModal')).hide();
@@ -808,12 +936,13 @@ async function showDeliveryConfirmModal(deliveryId) {
     // Fetch and display delivery address
     try {
         const response = await apiRequest(`/deliveries/${deliveryId}/address`);
-        const address = response.data || response;
+        const data = response.data || response;
+        const addr = data.address || {};
         const addressHtml = `
-            <p class="mb-1"><strong>${address.recipient_name}</strong></p>
-            <p class="mb-0">${address.street || ''}</p>
-            <p class="mb-0">${address.city}, ${address.state} ${address.postal_code || ''}</p>
-            <p class="mb-0">${address.country}</p>
+            <p class="mb-1"><strong>${data.fullName || 'Customer'}</strong></p>
+            <p class="mb-0">${addr.street || ''}</p>
+            <p class="mb-0">${addr.city || ''}, ${addr.state || ''} ${addr.postalCode || ''}</p>
+            <p class="mb-0">${addr.country || ''}</p>
         `;
         document.getElementById('delivery-address-content').innerHTML = addressHtml;
         document.getElementById('delivery-address-info').style.display = 'block';
@@ -829,8 +958,17 @@ async function confirmHandoff() {
     
     showLoading();
     try {
-        // Customer confirmation - no body needed, API uses customer's profile address
-        await apiRequest(`/deliveries/${deliveryId}/handoff/confirm`, 'POST');
+        // Use customer's address for delivery confirmation
+        const customerAddress = currentUser.address || {};
+        const city = customerAddress.city || 'Unknown City';
+        const state = customerAddress.state || 'N/A';
+        const country = customerAddress.country || 'Unknown';
+        
+        await apiRequest(`/deliveries/${deliveryId}/handoff/confirm`, 'POST', {
+            city: city,
+            state: state,
+            country: country
+        });
         
         bootstrap.Modal.getInstance(document.getElementById('confirmHandoffModal')).hide();
         showToast('Success!', 'Delivery confirmed.', 'success');
@@ -847,30 +985,16 @@ async function confirmHandoff() {
 async function confirmDeliveryHandoff() {
     const deliveryId = document.getElementById('delivery-confirm-delivery-id').value;
     
-    const city = document.getElementById('confirm-city').value.trim();
-    const state = document.getElementById('confirm-state').value.trim();
-    const country = document.getElementById('confirm-country').value.trim();
-    
-    const weight = parseFloat(document.getElementById('confirm-weight').value);
-    const length = parseFloat(document.getElementById('confirm-length').value);
-    const width = parseFloat(document.getElementById('confirm-width').value);
-    const height = parseFloat(document.getElementById('confirm-height').value);
-    
-    if (!city || !state || !country || !weight || !length || !width || !height) {
-        showToast('Error', 'Please fill all required fields', 'error');
-        return;
-    }
+    const city = document.getElementById('confirm-city').value.trim() || 'Pickup Location';
+    const state = document.getElementById('confirm-state').value.trim() || 'ST';
+    const country = document.getElementById('confirm-country').value.trim() || 'US';
     
     showLoading();
     try {
         await apiRequest(`/deliveries/${deliveryId}/handoff/confirm`, 'POST', {
             city: city,
             state: state,
-            country: country,
-            package_weight: weight,
-            package_length: length,
-            package_width: width,
-            package_height: height
+            country: country
         });
         
         bootstrap.Modal.getInstance(document.getElementById('deliveryConfirmModal')).hide();
@@ -887,7 +1011,8 @@ async function viewDeliveryAddress(deliveryId) {
     showLoading();
     try {
         const response = await apiRequest(`/deliveries/${deliveryId}/address`);
-        const address = response.data || response;
+        const data = response.data || response;
+        const addr = data.address || {};
         
         const addressHtml = `
             <div class="text-center mb-3">
@@ -895,11 +1020,11 @@ async function viewDeliveryAddress(deliveryId) {
                     <i class="ti ti-map-pin" style="font-size: 1.5rem;"></i>
                 </div>
             </div>
-            <h5 class="text-center mb-3">${address.recipient_name}</h5>
+            <h5 class="text-center mb-3">${data.fullName || 'Customer'}</h5>
             <div class="alert alert-light">
-                <p class="mb-1">${address.street || ''}</p>
-                <p class="mb-1">${address.city}, ${address.state} ${address.postal_code || ''}</p>
-                <p class="mb-0">${address.country}</p>
+                <p class="mb-1">${addr.street || ''}</p>
+                <p class="mb-1">${addr.city || ''}, ${addr.state || ''} ${addr.postalCode || ''}</p>
+                <p class="mb-0">${addr.country || ''}</p>
             </div>
         `;
         
@@ -922,7 +1047,7 @@ async function loadAdminUsers() {
     
     try {
         const response = await apiRequest('/users');
-        const users = extractList(response);
+        const users = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -937,7 +1062,7 @@ async function loadAdminUsers() {
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Username</th>
+                                <th>Name</th>
                                 <th>Email</th>
                                 <th>Role</th>
                                 <th>Created</th>
@@ -950,10 +1075,10 @@ async function loadAdminUsers() {
             html += `
                 <tr>
                     <td><code>${user.id.substring(0, 8)}...</code></td>
-                    <td><i class="ti ti-user me-1"></i>${user.username}</td>
+                    <td><i class="ti ti-user me-1"></i>${user.fullName || 'N/A'}</td>
                     <td>${user.email}</td>
                     <td>${getStatusBadge(user.role)}</td>
-                    <td>${formatDate(user.created_at)}</td>
+                    <td>${formatDate(user.createdAt)}</td>
                 </tr>
             `;
         });
@@ -995,26 +1120,28 @@ function showAddUserModal() {
 }
 
 async function createUser() {
-    const username = document.getElementById('new-user-username').value.trim();
+    const fullName = document.getElementById('new-user-fullname').value.trim();
     const email = document.getElementById('new-user-email').value.trim();
     const password = document.getElementById('new-user-password').value;
-    const fullName = document.getElementById('new-user-fullname').value.trim();
     const role = document.getElementById('new-user-role').value;
     
-    if (!username || !email || !password || !fullName) {
+    if (!fullName || !email || !password) {
         showToast('Error', 'Please fill in all required fields', 'error');
         return;
     }
     
+    // Generate username from email (before @)
+    const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    
     const userData = {
         username,
+        fullName,
         email,
         password,
-        full_name: fullName,
         role
     };
     
-    // Add address for sellers and customers
+    // Add address for sellers and customers (simple string format)
     if (role === 'SELLER' || role === 'CUSTOMER') {
         const street = document.getElementById('new-user-street').value.trim();
         const city = document.getElementById('new-user-city').value.trim();
@@ -1022,24 +1149,28 @@ async function createUser() {
         const zip = document.getElementById('new-user-zip').value.trim();
         const country = document.getElementById('new-user-country').value.trim();
         
-        if (city && state && country) {
-            userData.address = { street, city, state, postal_code: zip, country };
+        if (city && country) {
+            // Combine into a simple address string
+            userData.address = [street, city, state, zip, country].filter(Boolean).join(', ');
         }
     }
     
-    // Add organization_id for delivery persons
+    // Add vehicleInfo for delivery persons
     if (role === 'DELIVERY_PERSON') {
-        const organizationId = document.getElementById('new-user-organization').value.trim();
-        if (organizationId) {
-            userData.organization_id = organizationId;
+        const vehicleType = document.getElementById('new-user-organization').value.trim();
+        if (vehicleType) {
+            userData.vehicleInfo = {
+                type: vehicleType,
+                licensePlate: 'N/A'
+            };
         }
     }
     
     showLoading();
     try {
-        await apiRequest('/users', 'POST', userData);
+        await apiRequest('/auth/register', 'POST', userData);
         bootstrap.Modal.getInstance(document.getElementById('addUserModal')).hide();
-        showToast('Success!', `User "${username}" created successfully`, 'success');
+        showToast('Success!', `User "${fullName}" created successfully`, 'success');
         loadAdminUsers();
     } catch (error) {
         showToast('Error', error.message, 'error');
@@ -1053,7 +1184,8 @@ async function loadAdminItems() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const items = await apiRequest('/shop-items');
+        const response = await apiRequest('/shop-items');
+        const items = response.data || response;
         
         let html = `
             <div class="section-header">
@@ -1067,7 +1199,7 @@ async function loadAdminItems() {
                                 <th>ID</th>
                                 <th>Name</th>
                                 <th>Price</th>
-                                <th>Quantity</th>
+                                <th>Active</th>
                                 <th>Seller</th>
                                 <th>Created</th>
                             </tr>
@@ -1075,18 +1207,20 @@ async function loadAdminItems() {
                         <tbody>
         `;
         
-        items.forEach(item => {
-            html += `
-                <tr>
-                    <td><code>${item.id.substring(0, 8)}...</code></td>
-                    <td><i class="ti ti-package me-1"></i>${item.name}</td>
-                    <td>${formatPrice(item.price)}</td>
-                    <td>${item.quantity}</td>
-                    <td>${item.seller_id.substring(0, 8)}...</td>
-                    <td>${formatDate(item.created_at)}</td>
-                </tr>
-            `;
-        });
+        if (items && items.length > 0) {
+            items.forEach(item => {
+                html += `
+                    <tr>
+                        <td><code>${item.id.substring(0, 8)}...</code></td>
+                        <td><i class="ti ti-package me-1"></i>${item.name}</td>
+                        <td>${formatPrice(item.priceInCents)}</td>
+                        <td>${item.isActive ? '✓' : '✗'}</td>
+                        <td>${item.sellerId ? item.sellerId.substring(0, 8) : 'N/A'}...</td>
+                        <td>${formatDate(item.createdAt)}</td>
+                    </tr>
+                `;
+            });
+        }
         
         html += '</tbody></table></div></div>';
         dashboard.innerHTML = html;
@@ -1101,7 +1235,7 @@ async function loadAdminOrders() {
     
     try {
         const response = await apiRequest('/orders');
-        const orders = extractList(response);
+        const orders = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -1124,21 +1258,23 @@ async function loadAdminOrders() {
                         <tbody>
         `;
         
-        orders.forEach(order => {
-            const itemCount = order.items ? order.items.length : 0;
-            const totalQty = order.items ? order.items.reduce((sum, i) => sum + i.quantity, 0) : 0;
-            html += `
-                <tr>
-                    <td><code>${order.id.substring(0, 8)}...</code></td>
-                    <td>${order.customer_id.substring(0, 8)}...</td>
-                    <td>${itemCount} item(s)</td>
-                    <td>${totalQty}</td>
-                    <td>${formatPrice(order.total_amount)}</td>
-                    <td>${getStatusBadge(order.status)}</td>
-                    <td>${formatDate(order.created_at)}</td>
-                </tr>
-            `;
-        });
+        if (orders && orders.length > 0) {
+            orders.forEach(order => {
+                const itemCount = order.items ? order.items.length : 0;
+                const totalQty = order.items ? order.items.reduce((sum, i) => sum + i.quantity, 0) : 0;
+                html += `
+                    <tr>
+                        <td><code>${order.id.substring(0, 8)}...</code></td>
+                        <td>${order.customerId ? order.customerId.substring(0, 8) : 'N/A'}...</td>
+                        <td>${itemCount} item(s)</td>
+                        <td>${totalQty}</td>
+                        <td>${formatPrice(order.totalInCents)}</td>
+                        <td>${getStatusBadge(order.status)}</td>
+                        <td>${formatDate(order.createdAt)}</td>
+                    </tr>
+                `;
+            });
+        }
         
         html += '</tbody></table></div></div>';
         dashboard.innerHTML = html;
@@ -1152,8 +1288,8 @@ async function loadAdminDeliveries() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/deliveries');
-        const deliveries = extractList(response);
+        const response = await apiRequest('/deliveries/my');
+        const deliveries = response.data || extractList(response);
         
         let html = `
             <div class="section-header">
@@ -1166,31 +1302,33 @@ async function loadAdminDeliveries() {
                             <tr>
                                 <th>ID</th>
                                 <th>Order</th>
-                                <th>Delivery Person</th>
+                                <th>Custodian</th>
                                 <th>Status</th>
-                                <th>Created</th>
+                                <th>Updated</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
         `;
         
-        deliveries.forEach(delivery => {
-            html += `
-                <tr>
-                    <td><code>${delivery.deliveryId.substring(0, 8)}...</code></td>
-                    <td>${delivery.orderId.substring(0, 8)}...</td>
-                    <td>${delivery.currentCustodianId.substring(0, 8)}...</td>
-                    <td>${getStatusBadge(delivery.deliveryStatus)}</td>
-                    <td>${formatDate(delivery.createdAt)}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary" onclick="viewDeliveryHistory('${delivery.deliveryId}')">
-                            <i class="ti ti-history"></i> History
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
+        if (deliveries && deliveries.length > 0) {
+            deliveries.forEach(delivery => {
+                html += `
+                    <tr>
+                        <td><code>${delivery.deliveryId.substring(0, 8)}...</code></td>
+                        <td>${delivery.orderId.substring(0, 8)}...</td>
+                        <td>${delivery.currentCustodianId.substring(0, 8)}...</td>
+                        <td>${getStatusBadge(delivery.deliveryStatus)}</td>
+                        <td>${formatDate(delivery.updatedAt)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewDeliveryHistory('${delivery.deliveryId}')">
+                                <i class="ti ti-history"></i> History
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
         
         html += '</tbody></table></div></div>';
         dashboard.innerHTML = html;
@@ -1323,8 +1461,12 @@ function renderOrderCard(order, role) {
     let actions = '';
     
     if (role === 'seller') {
-        if (order.status === 'PENDING_CONFIRMATION') {
+        if (order.status === 'PENDING') {
             actions = `<button class="btn btn-success btn-action" onclick="confirmOrder('${order.id}')"><i class="ti ti-check me-1"></i>Confirm</button>`;
+        }
+    } else if (role === 'customer') {
+        if (order.status === 'PENDING') {
+            actions = `<button class="btn btn-danger btn-action" onclick="cancelOrder('${order.id}')"><i class="ti ti-x me-1"></i>Cancel</button>`;
         }
     }
     
@@ -1335,10 +1477,10 @@ function renderOrderCard(order, role) {
             <div class="card-body">
                 <div class="order-info">
                     <div class="d-flex align-items-center gap-3">
-                        <img src="/static/img/package.jpeg" alt="Package" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
+                        <img src="/img/package.jpeg" alt="Package" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
                         <div>
                             <h6 class="mb-1">Order #${order.id.substring(0, 8)}</h6>
-                            <p class="mb-1 text-muted small">Qty: ${totalQty} • Total: ${formatPrice(order.total_amount)}</p>
+                            <p class="mb-1 text-muted small">Qty: ${totalQty} • Total: ${formatPrice(order.totalInCents)}</p>
                             <p class="mb-0 text-muted small"><i class="ti ti-clipboard-list me-1"></i>${order.items ? order.items.length : 0} item(s)</p>
                         </div>
                     </div>
@@ -1434,7 +1576,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const auth = getAuth();
     if (auth) {
         try {
-            currentUser = await apiRequest('/users/me');
+            const response = await apiRequest('/users/me');
+            currentUser = response.data || response;
             showDashboard();
         } catch (error) {
             clearAuth();

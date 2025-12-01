@@ -6,14 +6,25 @@
 │   ├── app
 │   │   ├── __init__.py
 │   │   ├── models
-│   │   │   └── delivery.py
+│   │   │   ├── enums.py
+│   │   │   ├── order.py
+│   │   │   ├── shop_item.py
+│   │   │   └── user.py
 │   │   ├── routes
-│   │   │   └── delivery.py
+│   │   │   ├── delivery.py
+│   │   │   ├── orders.py
+│   │   │   ├── shop_items.py
+│   │   │   └── users.py
 │   │   └── services
-│   │       └── fabric_client.py
+│   │       ├── auth.py
+│   │       ├── database.py
+│   │       ├── delivery_service.py
+│   │       ├── event_listener.py
+│   │       ├── fabric_client.py
+│   │       ├── order_service.py
+│   │       └── shop_item_service.py
 │   ├── connection-profile.json
 │   ├── Dockerfile
-│   ├── examples.sh
 │   ├── main.py
 │   ├── organizations
 │   ├── postman-collection.json
@@ -23,6 +34,7 @@
 ├── chaincode
 │   └── delivery
 │       ├── delivery.go
+│       ├── Dockerfile
 │       ├── go.mod
 │       ├── go.sum
 │       └── main.go
@@ -160,6 +172,8 @@
 ├── generate_docs.sh
 ├── Makefile
 ├── METRICS.generated.md
+├── mongo-init
+│   └── init-mongo.js
 ├── OPERATIONS.md
 ├── README.md
 ├── STRUCTURE.generated.md

@@ -5,7 +5,7 @@
 ```bash
 cd /home/leviathan/Desktop/tracking
 make start        # Starts everything
-make test         # Creates test delivery
+# Register users and create orders via API
 ```
 
 Then open: http://localhost:8000/docs
@@ -20,7 +20,6 @@ Then open: http://localhost:8000/docs
 | `make stop` | Stop all services |
 | `make logs` | View all logs |
 | `make status` | Check container status |
-| `make test` | Create test delivery |
 | `make clean` | Remove all data |
 | `make help` | Show all commands |
 
@@ -39,43 +38,57 @@ Then open: http://localhost:8000/docs
 
 ## 📡 API Endpoints Quick Reference
 
-### Create Delivery
+### Authentication
 ```bash
-POST /api/v1/deliveries
-Body: {deliveryId, senderName, senderAddress, recipientName, 
-       recipientAddress, packageWeight, packageDimensions, 
-       packageDescription, estimatedDeliveryDate}
+# Register new user
+POST /api/v1/auth/register
+Body: {username, password, email, role}
+
+# Login
+POST /api/v1/auth/login
+Returns: {access_token, token_type}
 ```
 
-### Get Delivery
+### Users (Admin only for management)
 ```bash
-GET /api/v1/deliveries/{deliveryId}
+GET /api/v1/users/me              # Get current user
+PUT /api/v1/users/me/address      # Update own address
+GET /api/v1/users                 # List all (Admin)
+GET /api/v1/users/{id}            # Get user (Admin)
+PUT /api/v1/users/{id}            # Update user (Admin)
+DELETE /api/v1/users/{id}         # Deactivate (Admin)
 ```
 
-### List All
+### Shop Items (Seller)
 ```bash
-GET /api/v1/deliveries
+POST /api/v1/shop-items           # Create item (Seller)
+GET /api/v1/shop-items            # List all items
+GET /api/v1/shop-items/{id}       # Get item
+PUT /api/v1/shop-items/{id}       # Update (Owner/Admin)
+DELETE /api/v1/shop-items/{id}    # Delete (Owner/Admin)
 ```
 
-### Update Delivery
+### Orders
 ```bash
-PUT /api/v1/deliveries/{deliveryId}
-Body: {recipientAddress?, deliveryStatus?}
+POST /api/v1/orders               # Create order (Customer)
+GET /api/v1/orders                # List orders (role-filtered)
+GET /api/v1/orders/{id}           # Get order details
+PUT /api/v1/orders/{id}/confirm   # Confirm → creates delivery (Seller)
+PUT /api/v1/orders/{id}/cancel    # Cancel order
 ```
 
-### Cancel Delivery
+### Deliveries (Blockchain)
 ```bash
-DELETE /api/v1/deliveries/{deliveryId}
+GET /api/v1/deliveries            # List all (role-filtered)
+GET /api/v1/deliveries/{id}       # Get delivery details
+GET /api/v1/deliveries/{id}/history # Get history
 ```
 
-### Filter by Status
+### Handoff Operations
 ```bash
-GET /api/v1/deliveries/status/{PENDING|IN_TRANSIT|DELIVERED|CANCELED}
-```
-
-### View History
-```bash
-GET /api/v1/deliveries/{deliveryId}/history
+POST /api/v1/deliveries/{id}/handoff/initiate  # Start handoff
+POST /api/v1/deliveries/{id}/handoff/confirm   # Confirm handoff
+POST /api/v1/deliveries/{id}/handoff/dispute   # Dispute handoff
 ```
 
 ---
@@ -87,6 +100,7 @@ GET /api/v1/deliveries/{deliveryId}/history
 | `docker-compose ps` | List containers |
 | `docker-compose logs -f api` | Follow API logs |
 | `docker-compose logs -f peer0.delivery.example.com` | Follow peer logs |
+| `docker-compose logs -f mongodb` | Follow MongoDB logs |
 | `docker-compose restart api` | Restart API |
 | `docker stats` | Resource usage |
 
@@ -126,7 +140,9 @@ make deploy-chaincode
 |------|----------|---------|
 | **Environment Config** | `.env` | All settings |
 | **API Code** | `api/main.py` | API entry point |
-| **API Routes** | `api/app/routes/delivery.py` | Endpoints |
+| **API Routes** | `api/app/routes/*.py` | All endpoints |
+| **Services** | `api/app/services/*.py` | Business logic |
+| **Models** | `api/app/models/*.py` | Data models |
 | **Chaincode** | `chaincode/delivery/delivery.go` | Smart contract |
 | **Network Config** | `fabric-network/config/configtx.yaml` | Fabric setup |
 | **Deployment Guide** | `DEPLOYMENT.md` | How to deploy |
@@ -135,18 +151,6 @@ make deploy-chaincode
 ---
 
 ## 🎯 Common Tasks
-
-### Initialize Ledger with Sample Data
-```bash
-make init-ledger
-```
-
-### View Examples
-```bash
-make examples
-# or
-./api/examples.sh
-```
 
 ### Open Shell in Container
 ```bash
@@ -171,39 +175,84 @@ make network-info
 
 ---
 
-## 💡 Example: Complete Workflow
+## 💡 Example: Complete Order to Delivery Workflow
 
 ```bash
 # 1. Start system
 make start
 
-# 2. Create a delivery
-curl -X POST http://localhost:8000/api/v1/deliveries \
+# 2. Register users
+# Register a seller
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "seller1", "password": "123123123", "email": "seller@test.com", "role": "SELLER"}'
+
+# Register a customer
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "customer1", "password": "123123123", "email": "customer@test.com", "role": "CUSTOMER"}'
+
+# Register a delivery person
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "driver1", "password": "123123123", "email": "driver@test.com", "role": "DELIVERY_PERSON"}'
+
+# 3. Login as seller to get token
+SELLER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "seller1", "password": "123123123"}' | jq -r '.access_token')
+
+# 4. Seller creates shop item
+curl -X POST http://localhost:8000/api/v1/shop-items \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Laptop", "description": "Gaming laptop", "price_cents": 99900}'
+
+# 5. Login as customer
+CUSTOMER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "customer1", "password": "123123123"}' | jq -r '.access_token')
+
+# 6. Customer creates order (use shop item ID from step 4)
+curl -X POST http://localhost:8000/api/v1/orders \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "deliveryId": "DEL001",
-    "senderName": "Alice",
-    "senderAddress": "123 Main St",
-    "recipientName": "Bob",
-    "recipientAddress": "456 Oak Ave",
-    "packageWeight": 2.5,
-    "packageDimensions": {"length": 30, "width": 20, "height": 15},
-    "packageDescription": "Electronics",
-    "estimatedDeliveryDate": "2025-10-15T10:00:00Z"
+    "items": [{"item_id": "SHOP_ITEM_ID", "quantity": 1}],
+    "shipping_address": {"street": "123 Main St", "city": "NYC", "state": "NY", "postal_code": "10001", "country": "USA"}
   }'
 
-# 3. Update status
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL001 \
-  -H "Content-Type: application/json" \
-  -d '{"deliveryStatus": "IN_TRANSIT"}'
+# 7. Seller confirms order (creates blockchain delivery)
+curl -X PUT http://localhost:8000/api/v1/orders/{order_id}/confirm \
+  -H "Authorization: Bearer $SELLER_TOKEN"
 
-# 4. View history
-curl http://localhost:8000/api/v1/deliveries/DEL001/history
-
-# 5. Mark as delivered
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL001 \
+# 8. Seller initiates handoff to delivery person
+curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/initiate \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"deliveryStatus": "DELIVERED"}'
+  -d '{"to_user_id": "DRIVER_USER_ID"}'
+
+# 9. Delivery person confirms pickup (with location and package data)
+DRIVER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "driver1", "password": "123123123"}' | jq -r '.access_token')
+
+curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/confirm \
+  -H "Authorization: Bearer $DRIVER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "city": "New York",
+    "state": "NY",
+    "country": "USA",
+    "package_weight": 2.5,
+    "dimension_length": 30,
+    "dimension_width": 20,
+    "dimension_height": 10
+  }'
+
+# 10. View delivery history
+curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
+  -H "Authorization: Bearer $DRIVER_TOKEN"
 ```
 
 ---
@@ -212,33 +261,100 @@ curl -X PUT http://localhost:8000/api/v1/deliveries/DEL001 \
 
 | Status | Meaning |
 |--------|---------|
-| `PENDING` | Created, not yet shipped |
-| `IN_TRANSIT` | Currently being transported |
+| `PENDING_PICKUP` | Created, awaiting seller handoff |
+| `IN_TRANSIT` | Being transported by delivery person |
+| `OUT_FOR_DELIVERY` | Final delivery attempt |
 | `DELIVERED` | Successfully delivered |
-| `CANCELED` | Delivery canceled |
+| `DISPUTED_PICKUP` | Pickup handoff disputed |
+| `DISPUTED_TRANSIT` | Transit handoff disputed |
+| `DISPUTED_DELIVERY` | Final delivery disputed |
+
+## 📦 Order Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `PENDING_CONFIRMATION` | Customer created, awaiting seller |
+| `CONFIRMED` | Seller confirmed, delivery created |
+| `CANCELLED` | Order cancelled |
 
 ---
 
 ## 📊 Data Model Reference
 
+### Blockchain Delivery
 ```typescript
 {
-  deliveryId: string,              // "DEL001"
-  senderName: string,              // "Alice Cooper"
-  senderAddress: string,           // "123 Main St, NY"
-  recipientName: string,           // "Bob Smith"
-  recipientAddress: string,        // "456 Oak Ave, LA"
-  packageWeight: float,            // 2.5 (kg)
-  packageDimensions: {
-    length: float,                 // 30.0 (cm)
-    width: float,                  // 20.0 (cm)
-    height: float                  // 15.0 (cm)
+  delivery_id: string,       // "del_abc123"
+  order_id: string,          // Reference to MongoDB order
+  seller_id: string,         // Seller user ID (for ownership validation)
+  customer_id: string,       // Customer user ID (for ownership validation)
+  current_holder_id: string, // Who has custody
+  status: enum,              // See statuses above
+  pending_handoff: {         // Pending handoff info (optional)
+    to_user_id: string,
+    from_user_id: string,
+    initiated_at: timestamp
+  } | null,
+  last_location: {           // Updated on handoff confirmations
+    city: string,
+    state: string,
+    country: string,
+    timestamp: string
   },
-  packageDescription: string,      // "Electronics"
-  deliveryStatus: enum,            // PENDING|IN_TRANSIT|DELIVERED|CANCELED
-  createdAt: timestamp,            // "2025-10-09T12:00:00Z"
-  updatedAt: timestamp,            // "2025-10-09T12:00:00Z"
-  estimatedDeliveryDate: timestamp // "2025-10-15T10:00:00Z"
+  package: {                 // Package dimensions (updated on handoffs)
+    weight: number,
+    length: number,
+    width: number,
+    height: number
+  },
+  created_at: timestamp,
+  updated_at: timestamp
+}
+```
+
+**Access Control:**
+- Only involved parties (seller, customer, current holder, pending handoff recipient) can view/modify
+- Admin has read-only access to all deliveries
+- Cancel is restricted to customer only
+```
+
+### MongoDB Order
+```typescript
+{
+  id: ObjectId,
+  customer_id: string,
+  seller_id: string,
+  items: [{
+    item_id: string,
+    quantity: number,
+    price_cents: number
+  }],
+  total_cents: number,
+  status: enum,              // PENDING_CONFIRMATION | CONFIRMED | CANCELLED
+  delivery_id: string | null, // Set after seller confirms
+  shipping_address: {
+    street: string,
+    city: string,
+    state: string,
+    postal_code: string,
+    country: string
+  },
+  created_at: timestamp,
+  updated_at: timestamp
+}
+```
+
+### MongoDB ShopItem
+```typescript
+{
+  id: ObjectId,
+  seller_id: string,
+  name: string,
+  description: string,
+  price_cents: number,
+  is_active: boolean,
+  created_at: timestamp,
+  updated_at: timestamp
 }
 ```
 
@@ -257,10 +373,10 @@ curl -X PUT http://localhost:8000/api/v1/deliveries/DEL001 \
 
 1. ✅ Deploy the system: `make start`
 2. ✅ Explore API docs: http://localhost:8000/docs
-3. ✅ Run test delivery: `make test`
+3. ✅ Create users and run workflow
 4. ✅ Read ARCHITECTURE.md
-5. ✅ Modify chaincode (add field)
-6. ✅ Add authentication to API
+5. ✅ Understand chaincode role enforcement
+6. ✅ Explore handoff workflow
 7. ✅ Deploy to production
 
 ---
@@ -277,89 +393,15 @@ curl -X PUT http://localhost:8000/api/v1/deliveries/DEL001 \
 
 ## 🌟 Remember
 
-- **All data is on blockchain** (immutable)
-- **Every change creates a transaction** (traceable)
+- **Delivery data is on blockchain** (immutable)
+- **User/Order/Item data is in MongoDB** (off-chain)
+- **Every delivery change creates a transaction** (traceable)
+- **Role enforcement happens in chaincode** (can't bypass)
 - **Health check**: http://localhost:8000/health
 - **Interactive docs**: http://localhost:8000/docs
 - **Get help**: `make help`
 
 ---
-
-## 📱 Quick Test
-
-After starting the system:
-```bash
-# Quick test
-make test
-
-# View result
-curl http://localhost:8000/api/v1/deliveries/TEST001
-```
-
----
-
-## Testing the System
-
-### Initialize Ledger (Optional)
-
-The chaincode includes an `InitLedger` function that creates sample data. To invoke it:
-
-```bash
-docker exec cli peer chaincode invoke \
-  -o orderer.example.com:7050 \
-  -C deliverychannel \
-  -n delivery \
-  -c '{"function":"InitLedger","Args":[]}' \
-  --waitForEvent
-```
-
-### Create a Test Delivery
-
-```bash
-curl -X POST http://localhost:8000/api/v1/deliveries \
-  -H "Content-Type: application/json" \
-  -d '{
-    "deliveryId": "DEL100",
-    "senderName": "Test Sender",
-    "senderAddress": "123 Test St, Test City, TC 12345",
-    "recipientName": "Test Recipient",
-    "recipientAddress": "456 Test Ave, Test City, TC 12345",
-    "packageWeight": 2.5,
-    "packageDimensions": {
-      "length": 30.0,
-      "width": 20.0,
-      "height": 15.0
-    },
-    "packageDescription": "Test Package",
-    "estimatedDeliveryDate": "2025-10-20T10:00:00Z"
-  }'
-```
-
-### Retrieve the Delivery
-
-```bash
-curl http://localhost:8000/api/v1/deliveries/DEL100
-```
-
-### Get All Deliveries
-
-```bash
-curl http://localhost:8000/api/v1/deliveries
-```
-
-### Update Delivery Status
-
-```bash
-curl -X PUT http://localhost:8000/api/v1/deliveries/DEL100 \
-  -H "Content-Type: application/json" \
-  -d '{"deliveryStatus": "IN_TRANSIT"}'
-```
-
-### View More Examples
-
-```bash
-./api/examples.sh
-```
 
 ## Monitoring
 
@@ -379,6 +421,11 @@ docker-compose logs -f api
 **Peer logs:**
 ```bash
 docker-compose logs -f peer0.delivery.example.com
+```
+
+**MongoDB logs:**
+```bash
+docker-compose logs -f mongodb
 ```
 
 **Orderer logs:**

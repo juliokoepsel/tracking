@@ -1,6 +1,6 @@
 # Deployment Guide - Package Delivery Tracking System
 
-This guide will walk you through deploying the complete Hyperledger Fabric + FastAPI package delivery tracking system.
+This guide will walk you through deploying the complete Hyperledger Fabric + FastAPI + MongoDB package delivery tracking system.
 
 ## Prerequisites
 
@@ -26,9 +26,14 @@ This guide will walk you through deploying the complete Hyperledger Fabric + Fas
 │         │  Delivery Contract  │                             │
 │         └──────────┬──────────┘                             │
 │                    │                                         │
+│  ┌─────────────────▼────────────────┐                       │
+│  │       FastAPI Service            │                       │
+│  │       (Port 8000)                │                       │
+│  └─────────────────┬────────────────┘                       │
+│                    │                                         │
 │         ┌──────────▼──────────┐                             │
-│         │   FastAPI Service   │                             │
-│         │   (Port 8000)       │                             │
+│         │      MongoDB        │                             │
+│         │    (Port 27017)     │                             │
 │         └─────────────────────┘                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -53,6 +58,8 @@ Key settings:
 - `CHANNEL_NAME=deliverychannel` - Blockchain channel name
 - `CHAINCODE_NAME=delivery` - Smart contract name
 - `API_PORT=8000` - API service port
+- `JWT_SECRET` - Secret key for JWT tokens (change in production!)
+- `MONGO_*` - MongoDB connection settings
 
 ### Step 3: Start the Fabric Network
 
@@ -117,10 +124,10 @@ Chaincode deployed successfully!
 ### Step 5: Start the FastAPI Service
 
 ```bash
-docker-compose up -d api
+docker-compose up -d api mongodb
 ```
 
-**Verify the service is running:**
+**Verify the services are running:**
 ```bash
 docker-compose ps
 ```
@@ -130,6 +137,7 @@ You should see all containers running:
 - peer0.delivery.example.com
 - cli
 - delivery-api
+- mongodb
 
 **Check API logs:**
 ```bash
@@ -152,6 +160,18 @@ curl http://localhost:8000/health
   "service": "api",
   "blockchain_connected": true
 }
+```
+
+**Register a test user:**
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "123123123",
+    "email": "test@example.com",
+    "role": "CUSTOMER"
+  }'
 ```
 
 **Access the interactive API documentation:**
@@ -180,21 +200,24 @@ When you modify the chaincode:
 
 ### For Production Deployment:
 
-1. **Enable TLS:**
+1. **Change JWT Secret:**
+   - Generate a strong random secret for `JWT_SECRET` in .env
+   - Use at least 32 characters
+
+2. **Enable TLS:**
    - Set `CORE_PEER_TLS_ENABLED=true` in docker-compose.yml
    - Generate proper TLS certificates
 
-2. **Change default credentials:**
+3. **Change default credentials:**
    - Update `ADMIN_USER` and `ADMIN_PASSWORD` in .env
+   - Change MongoDB credentials
+   - Change default admin user password
 
-3. **Configure CORS:**
+4. **Configure CORS:**
    - Update `allow_origins` in `api/main.py` to specific domains
 
-4. **Use secrets management:**
+5. **Use secrets management:**
    - Store sensitive data in Docker secrets or environment-specific vaults
-
-5. **Enable authentication:**
-   - Add JWT or OAuth2 authentication to API endpoints
 
 6. **Network security:**
    - Use Docker overlay networks
@@ -253,22 +276,24 @@ docker-compose up -d
 
 ## Next Steps
 
-1. **Extend the chaincode:**
-   - Add more business logic
-   - Implement access control
-   - Add delivery tracking events
+1. **Create initial users:**
+   - Register seller, customer, and delivery person accounts
+   - Use the Swagger UI at http://localhost:8000/docs
 
-2. **Enhance the API:**
-   - Add user authentication
-   - Implement rate limiting
-   - Add caching layer
+2. **Create shop items:**
+   - Login as seller and create product listings
 
-3. **Scale the network:**
+3. **Test the workflow:**
+   - Customer creates order
+   - Seller confirms → delivery created on blockchain
+   - Handoff workflow from seller to driver to customer
+
+4. **Scale the network:**
    - Add more organizations
    - Add more peers
    - Implement Raft consensus for orderers
 
-4. **Monitoring and Analytics:**
+5. **Monitoring and Analytics:**
    - Integrate Prometheus metrics
    - Set up Grafana dashboards
    - Add ELK stack for log aggregation

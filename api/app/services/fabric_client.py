@@ -5,7 +5,7 @@ Handles all interactions with the Hyperledger Fabric network
 import json
 import os
 import subprocess
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

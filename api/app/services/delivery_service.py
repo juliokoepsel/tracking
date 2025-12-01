@@ -2,7 +2,7 @@
 Delivery Service - Business logic for delivery operations
 Handles blockchain interactions for delivery tracking
 """
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from ..services.fabric_client import fabric_client
 

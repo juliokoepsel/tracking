@@ -9,7 +9,7 @@ import logging
 
 from app.models.user import User
 from app.models.enums import UserRole
-from app.services.auth import get_current_user, require_roles
+from app.services.auth import require_roles
 from app.services import delivery_service
 
 logger = logging.getLogger(__name__)

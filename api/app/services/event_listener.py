@@ -3,10 +3,8 @@ Event Listener Service - Listens to blockchain events and syncs MongoDB
 Syncs Order.status when Delivery status changes on blockchain
 """
 import asyncio
-import json
-import subprocess
 import logging
-from typing import Optional, Callable, Any
+from typing import Optional
 
 from ..models.enums import DeliveryStatus
 from ..services import order_service

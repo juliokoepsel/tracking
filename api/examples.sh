@@ -32,7 +32,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "seller1",
-    "password": "password123",
+    "password": "123123",
     "email": "seller@example.com",
     "role": "SELLER"
   }'
@@ -46,7 +46,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "customer1",
-    "password": "password123",
+    "password": "123123",
     "email": "customer@example.com",
     "role": "CUSTOMER"
   }'
@@ -60,7 +60,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "driver1",
-    "password": "password123",
+    "password": "123123",
     "email": "driver@example.com",
     "role": "DELIVERY_PERSON"
   }'
@@ -75,7 +75,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "seller1",
-    "password": "password123"
+    "password": "123123"
   }'
 # Response: {"access_token": "...", "token_type": "bearer"}
 EOF

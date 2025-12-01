@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 from beanie import PydanticObjectId
 
-from ..models.order import Order, OrderCreate, OrderConfirm, OrderItem
+from ..models.order import Order, OrderCreate, OrderConfirm
 from ..models.enums import DeliveryStatus
 from ..services.fabric_client import fabric_client
 from ..services import shop_item_service

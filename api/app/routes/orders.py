@@ -3,14 +3,12 @@ Order Routes - Order management operations
 Customer creates orders, Seller confirms to create blockchain delivery
 """
 from fastapi import APIRouter, HTTPException, status, Depends
-from typing import List
-from datetime import datetime
 import logging
 
 from app.models.order import Order, OrderCreate, OrderConfirm, OrderResponse, OrderListResponse
 from app.models.user import User
 from app.models.enums import UserRole, DeliveryStatus
-from app.services.auth import get_current_user, require_roles
+from app.services.auth import require_roles
 from app.services import order_service
 
 logger = logging.getLogger(__name__)

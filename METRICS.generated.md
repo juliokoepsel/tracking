@@ -4,14 +4,19 @@
 
 | Extension | Count |
 |-----------|-------|
+| .pem | 23 |
 | .pyc | 18 |
 | .py | 17 |
+| .crt | 10 |
+| .yaml | 9 |
 | .md | 7 |
 | .sh | 5 |
-| .yaml | 2 |
+| .key | 5 |
 | .txt | 2 |
+| .tx | 2 |
 | .json | 2 |
 | .go | 2 |
+| .block | 2 |
 | .yml | 1 |
 | .sum | 1 |
 | .mod | 1 |
@@ -23,10 +28,10 @@
 |----------|-------|-------|
 | Go | 2 | 832 |
 | Python | 17 | 3282 |
-| YAML | 3 | 340 |
+| YAML | 10 | 438 |
 | JSON | 2 | 332 |
-| Markdown | 7 | 2269 |
+| Markdown | 7 | 2392 |
 | Shell | 5 | 665 |
 | Dockerfile | 2 | 64 |
 
-*Generated on Fri Nov 28 11:49:54 PM -03 2025*
+*Generated on Sun Nov 30 11:49:45 PM -03 2025*

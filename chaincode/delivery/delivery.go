@@ -54,26 +54,26 @@ const (
 
 // PendingHandoff tracks a pending custody transfer
 type PendingHandoff struct {
-	FromUserID    string   `json:"fromUserId"`
-	FromRole      UserRole `json:"fromRole"`
-	ToUserID      string   `json:"toUserId"`
-	ToRole        UserRole `json:"toRole"`
-	InitiatedAt   string   `json:"initiatedAt"`
+	FromUserID  string   `json:"fromUserId"`
+	FromRole    UserRole `json:"fromRole"`
+	ToUserID    string   `json:"toUserId"`
+	ToRole      UserRole `json:"toRole"`
+	InitiatedAt string   `json:"initiatedAt"`
 }
 
 // Delivery represents a package delivery record on the blockchain
 // Simplified structure: no PII, no redundant history (use GetHistoryForKey)
 type Delivery struct {
-	DeliveryID         string            `json:"deliveryId"`
-	OrderID            string            `json:"orderId"` // Links to MongoDB Order
-	PackageWeight      float64           `json:"packageWeight"` // in kg
-	PackageDimensions  PackageDimensions `json:"packageDimensions"`
-	DeliveryStatus     DeliveryStatus    `json:"deliveryStatus"`
-	LastLocation       Location          `json:"lastLocation"`
-	CurrentCustodianID string            `json:"currentCustodianId"`
-	CurrentCustodianRole UserRole        `json:"currentCustodianRole"`
-	PendingHandoff     *PendingHandoff   `json:"pendingHandoff,omitempty"`
-	UpdatedAt          string            `json:"updatedAt"`
+	DeliveryID           string            `json:"deliveryId"`
+	OrderID              string            `json:"orderId"`       // Links to MongoDB Order
+	PackageWeight        float64           `json:"packageWeight"` // in kg
+	PackageDimensions    PackageDimensions `json:"packageDimensions"`
+	DeliveryStatus       DeliveryStatus    `json:"deliveryStatus"`
+	LastLocation         Location          `json:"lastLocation"`
+	CurrentCustodianID   string            `json:"currentCustodianId"`
+	CurrentCustodianRole UserRole          `json:"currentCustodianRole"`
+	PendingHandoff       *PendingHandoff   `json:"pendingHandoff,omitempty" metadata:",optional"`
+	UpdatedAt            string            `json:"updatedAt"`
 }
 
 // Event names for chaincode events
@@ -98,18 +98,18 @@ type DeliveryEvent struct {
 // ADMIN has NO access to chaincode operations
 func validateRole(callerRole string, allowedRoles ...UserRole) error {
 	role := UserRole(callerRole)
-	
+
 	// Admin explicitly has no chaincode access
 	if role == RoleAdmin {
 		return fmt.Errorf("admin role is not authorized to access chaincode operations")
 	}
-	
+
 	for _, allowed := range allowedRoles {
 		if role == allowed {
 			return nil
 		}
 	}
-	
+
 	return fmt.Errorf("role %s is not authorized for this operation", callerRole)
 }
 
@@ -410,7 +410,7 @@ func (c *DeliveryContract) ConfirmHandoff(
 	// Update custody
 	handoff := delivery.PendingHandoff
 	oldStatus := delivery.DeliveryStatus
-	
+
 	delivery.CurrentCustodianID = handoff.ToUserID
 	delivery.CurrentCustodianRole = handoff.ToRole
 
@@ -516,7 +516,7 @@ func (c *DeliveryContract) DisputeHandoff(
 	if err := emitEvent(ctx, EventDeliveryStatusChanged, event); err != nil {
 		return err
 	}
-	
+
 	return emitEvent(ctx, EventHandoffDisputed, map[string]string{
 		"deliveryId": deliveryID,
 		"disputedBy": callerID,

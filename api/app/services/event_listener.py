@@ -50,14 +50,14 @@ class EventListener:
         """
         Main event listening loop.
         
-        Note: In a production environment, this would use the Fabric SDK
+        Note: In a production environment, this could use the Fabric SDK
         to subscribe to block events. For this implementation, we use
-        periodic polling as a fallback mechanism.
+        periodic polling via CLI commands as a fallback mechanism.
         """
         while self.running:
             try:
                 # Poll for status changes every 5 seconds
-                # In production, use Fabric SDK event subscription
+                # Uses CLI-based polling rather than SDK event subscription
                 await asyncio.sleep(5)
                 
                 # This is a placeholder - in production you'd use:

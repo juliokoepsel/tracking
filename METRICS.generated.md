@@ -30,11 +30,11 @@
 | Language | Files | Lines |
 |----------|-------|-------|
 | Go | 2 | 947 |
-| Python | 17 | 3648 |
-| YAML | 10 | 439 |
-| JSON | 2 | 332 |
+| Python | 17 | 3660 |
+| YAML | 10 | 455 |
+| JSON | 2 | 341 |
 | Markdown | 7 | 2469 |
-| Shell | 4 | 362 |
+| Shell | 4 | 372 |
 | Dockerfile | 2 | 64 |
 
-*Generated on Mon Dec  1 06:48:30 AM -03 2025*
+*Generated on Mon Dec  1 08:07:49 AM -03 2025*

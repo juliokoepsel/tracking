@@ -41,6 +41,9 @@ docker exec cli peer lifecycle chaincode install ${CHAINCODE_NAME}.tar.gz
 
 echo -e "${GREEN}✓ Chaincode installed${NC}"
 
+# TLS CA file path (inside CLI container)
+ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
 # Get package ID
 echo -e "${YELLOW}Getting package ID...${NC}"
 PACKAGE_ID=$(docker exec cli peer lifecycle chaincode queryinstalled | grep ${CHAINCODE_LABEL} | sed 's/^Package ID: //' | sed 's/, Label.*//')
@@ -54,7 +57,8 @@ docker exec cli peer lifecycle chaincode approveformyorg \
     --name ${CHAINCODE_NAME} \
     --version ${CHAINCODE_VERSION} \
     --package-id ${PACKAGE_ID} \
-    --sequence 1
+    --sequence 1 \
+    --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Chaincode approved${NC}"
 
@@ -73,7 +77,8 @@ docker exec cli peer lifecycle chaincode commit \
     --channelID ${CHANNEL_NAME} \
     --name ${CHAINCODE_NAME} \
     --version ${CHAINCODE_VERSION} \
-    --sequence 1
+    --sequence 1 \
+    --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Chaincode committed${NC}"
 

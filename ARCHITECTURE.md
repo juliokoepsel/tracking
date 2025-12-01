@@ -65,10 +65,10 @@
 - **Components**:
   - **Routes**: 
     - `auth.py`: HTTP Basic authentication (login, register)
-    - `users.py`: User management (Admin only)
+    - `users.py`: User management (Admin-only except `/delivery-persons` for Seller/DeliveryPerson/Admin)
     - `shop_items.py`: Product catalog (Seller)
     - `orders.py`: Order lifecycle (Customer creates, Seller confirms)
-    - `delivery.py`: Blockchain delivery operations & handoffs
+    - `delivery.py`: Blockchain delivery operations & handoffs (package info excluded from GET by ID)
   - **Models**: 
     - `user.py`: User with Address, roles
     - `shop_item.py`: Seller products with pricing
@@ -130,6 +130,11 @@
   - `ConfirmHandoff(delivery_id, caller_id, role, city, state, country, weight, length, width, height)`: Accept pending handoff (with location/package update)
   - `CancelDelivery(delivery_id, caller_id, role)`: Cancel delivery (Customer only)
   - `DisputeHandoff(delivery_id, reason, caller_id, role)`: Dispute handoff
+  - `QueryDeliveriesByCustodian(custodian_id, caller_id, caller_role)`: Query deliveries by role:
+    - **Sellers**: See all deliveries where they are the seller
+    - **Delivery Persons**: See deliveries where they are custodian or pending handoff target
+    - **Customers**: See deliveries for their orders
+    - **Admin**: See all deliveries
 - **Ownership Validation**: All operations validate caller is involved (seller, customer, current custodian, or pending handoff party)
 - **Admin Access**: Read-only access to all deliveries for monitoring
 - **Chaincode Events**:
@@ -170,6 +175,8 @@ Seller                 │                      │                    │
 
 #### Handoff Flow
 
+Sellers can only initiate handoffs to Delivery Persons (not directly to Customers).
+
 ```
 Seller                API                  Blockchain           DeliveryPerson
   │                    │                      │                    │
@@ -177,6 +184,8 @@ Seller                API                  Blockchain           DeliveryPerson
   │    /initiate       ├──InitiateHandoff────►│                    │
   │                    │                      ├──Validate Role     │
   │                    │                      ├──Set Pending       │
+  │                    │                      ├──Status: PENDING   │
+  │                    │                      │   _PICKUP_HANDOFF  │
   │                    │◄──Event: Initiated───┤                    │
   │◄──Handoff Pending──┤                      │                    │
   │                    │                      │                    │
@@ -186,7 +195,7 @@ Seller                API                  Blockchain           DeliveryPerson
   │                    ├──ConfirmHandoff─────►│                    │
   │                    │                      ├──Validate Role     │
   │                    │                      ├──Transfer Custody  │
-  │                    │                      ├──Update Status     │
+  │                    │                      ├──Status: IN_TRANSIT│
   │                    │◄──Event: Confirmed───┤                    │
   │                    ├──────────────────────┼──Handoff Complete─►│
 ```

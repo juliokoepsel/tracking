@@ -142,6 +142,7 @@ services:
       - "${API_PORT}:8000"
     volumes:
       - ./api:/app
+      - ./ui:/ui
       - ./fabric-network/organizations:/app/organizations
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

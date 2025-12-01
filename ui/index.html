@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MARKETPLACE</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Tabler Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary" id="main-navbar" style="display: none;">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="ti ti-shopping-cart me-2"></i>MARKETPLACE
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto" id="nav-links">
+                    <!-- Dynamic nav links based on role -->
+                </ul>
+                <div class="d-flex align-items-center">
+                    <span class="text-light me-3" id="user-info"></span>
+                    <button class="btn btn-outline-light btn-sm" onclick="logout()">
+                        <i class="ti ti-logout me-1"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container my-4" id="main-content">
+        <!-- Login Section -->
+        <section id="login-section" class="row justify-content-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white text-center">
+                        <h4 class="mb-0">
+                            <i class="ti ti-shopping-cart me-2"></i>MARKETPLACE
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="login-form">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="ti ti-user"></i></span>
+                                    <input type="text" class="form-control" id="username" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Password</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="ti ti-lock"></i></span>
+                                    <input type="password" class="form-control" id="password" required>
+                                </div>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="ti ti-login me-1"></i>Login
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" style="display: none;">
+            <!-- Dashboard content will be dynamically loaded -->
+        </section>
+    </main>
+
+    <!-- Toast Container for Notifications -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="notification-toast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="ti ti-bell me-2"></i>
+                <strong class="me-auto" id="toast-title">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toast-body"></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Create Shop Item Modal -->
+    <div class="modal fade" id="createItemModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ti ti-plus me-2"></i>Add New Item</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-item-form">
+                        <div class="mb-3">
+                            <label for="item-name" class="form-label">Item Name</label>
+                            <input type="text" class="form-control" id="item-name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="item-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="item-description" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="item-price" class="form-label">Price ($)</label>
+                            <input type="number" class="form-control" id="item-price" step="0.01" min="0" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="createShopItem()">
+                        <i class="ti ti-check me-1"></i>Create Item
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Details Modal -->
+    <div class="modal fade" id="orderDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ti ti-clipboard-list me-2"></i>Order Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="order-details-body">
+                    <!-- Order details will be loaded here -->
+                </div>
+                <div class="modal-footer" id="order-details-footer">
+                    <!-- Action buttons based on role/status -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Details Modal -->
+    <div class="modal fade" id="deliveryDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ti ti-truck me-2"></i>Delivery Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="delivery-details-body">
+                    <!-- Delivery details and timeline will be loaded here -->
+                </div>
+                <div class="modal-footer" id="delivery-details-footer">
+                    <!-- Action buttons based on role/status -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Order Modal -->
+    <div class="modal fade" id="confirmOrderModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="ti ti-package me-2"></i>Confirm Order - Package Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="confirm-order-form">
+                        <input type="hidden" id="confirm-order-id">
+                        <p class="text-muted small mb-3">Enter the package dimensions for shipping:</p>
+                        <div class="mb-3">
+                            <label for="package-weight" class="form-label">Weight (kg)</label>
+                            <input type="number" class="form-control" id="package-weight" step="0.1" min="0.1" value="1.0" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-4">
+                                <div class="mb-3">
+                                    <label for="package-length" class="form-label">Length (cm)</label>
+                                    <input type="number" class="form-control" id="package-length" step="0.1" min="1" value="20" required>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="mb-3">
+                                    <label for="package-width" class="form-label">Width (cm)</label>
+                                    <input type="number" class="form-control" id="package-width" step="0.1" min="1" value="15" required>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="mb-3">
+                                    <label for="package-height" class="form-label">Height (cm)</label>
+                                    <input type="number" class="form-control" id="package-height" step="0.1" min="1" value="10" required>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="submitConfirmOrder()">
+                        <i class="ti ti-check me-1"></i>Confirm Order
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assign Delivery Modal -->
+    <div class="modal fade" id="createDeliveryModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ti ti-truck me-2"></i>Assign Delivery Person</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-delivery-form">
+                        <input type="hidden" id="delivery-order-id">
+                        <div class="mb-3">
+                            <label for="delivery-person-select" class="form-label">Select Delivery Person</label>
+                            <select class="form-select" id="delivery-person-select" required>
+                                <!-- Options will be loaded dynamically -->
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="assignDelivery()">
+                        <i class="ti ti-check me-1"></i>Assign
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Initiate Handoff Modal -->
+    <div class="modal fade" id="initiateHandoffModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title"><i class="ti ti-transfer me-2"></i>Initiate Handoff</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="initiate-handoff-form">
+                        <input type="hidden" id="handoff-delivery-id">
+                        <div class="mb-3">
+                            <label for="handoff-to-role" class="form-label">Handoff To</label>
+                            <select class="form-select" id="handoff-to-role" required onchange="updateHandoffRecipientOptions()">
+                                <option value="DELIVERY_PERSON">Delivery Person</option>
+                                <option value="CUSTOMER">Customer</option>
+                            </select>
+                        </div>
+                        <div class="mb-3" id="handoff-recipient-container">
+                            <label for="handoff-to-user" class="form-label">Select Recipient</label>
+                            <select class="form-select" id="handoff-to-user" required>
+                                <!-- Options will be loaded dynamically -->
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" onclick="initiateHandoff()">
+                        <i class="ti ti-transfer me-1"></i>Initiate Handoff
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Handoff Modal (for Customers) -->
+    <div class="modal fade" id="confirmHandoffModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="ti ti-check me-2"></i>Confirm Receipt</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="confirm-handoff-form">
+                        <input type="hidden" id="confirm-handoff-delivery-id">
+                        <p class="text-muted mb-3">Confirm that you have received the package. Please make sure the package matches what was ordered.</p>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="confirmHandoff()">
+                        <i class="ti ti-check me-1"></i>Confirm Receipt
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accept Pickup / Confirm Handoff Modal (for Delivery Persons) -->
+    <div class="modal fade" id="deliveryConfirmModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="ti ti-package me-2"></i>Accept Pickup</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="delivery-confirm-form">
+                        <input type="hidden" id="delivery-confirm-delivery-id">
+                        
+                        <!-- Delivery Address Info -->
+                        <div id="delivery-address-info" class="alert alert-info mb-4" style="display: none;">
+                            <h6><i class="ti ti-map-pin me-2"></i>Delivery Address</h6>
+                            <div id="delivery-address-content"></div>
+                        </div>
+                        
+                        <h6 class="mb-3"><i class="ti ti-map me-2"></i>Current Location</h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="confirm-city" class="form-label">City</label>
+                                <input type="text" class="form-control" id="confirm-city" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="confirm-state" class="form-label">State</label>
+                                <input type="text" class="form-control" id="confirm-state" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="confirm-country" class="form-label">Country</label>
+                                <input type="text" class="form-control" id="confirm-country" required>
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        <h6 class="mb-3"><i class="ti ti-package me-2"></i>Package Details</h6>
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label for="confirm-weight" class="form-label">Weight (kg)</label>
+                                <input type="number" class="form-control" id="confirm-weight" step="0.1" min="0.1" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="confirm-length" class="form-label">Length (cm)</label>
+                                <input type="number" class="form-control" id="confirm-length" step="0.1" min="0.1" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="confirm-width" class="form-label">Width (cm)</label>
+                                <input type="number" class="form-control" id="confirm-width" step="0.1" min="0.1" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="confirm-height" class="form-label">Height (cm)</label>
+                                <input type="number" class="form-control" id="confirm-height" step="0.1" min="0.1" required>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="confirmDeliveryHandoff()">
+                        <i class="ti ti-check me-1"></i>Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Address Modal (for Delivery Persons) -->
+    <div class="modal fade" id="deliveryAddressModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title"><i class="ti ti-map-pin me-2"></i>Delivery Address</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="delivery-address-modal-content">
+                    <!-- Address will be loaded dynamically -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal (Admin) -->
+    <div class="modal fade" id="addUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="ti ti-user-plus me-2"></i>Add New User</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-user-form">
+                        <div class="mb-3">
+                            <label for="new-user-username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="new-user-username" required minlength="3" maxlength="50">
+                        </div>
+                        <div class="mb-3">
+                            <label for="new-user-email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="new-user-email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new-user-password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="new-user-password" required minlength="6">
+                        </div>
+                        <div class="mb-3">
+                            <label for="new-user-fullname" class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="new-user-fullname" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new-user-role" class="form-label">Role</label>
+                            <select class="form-select" id="new-user-role" required>
+                                <option value="ADMIN" selected>Admin</option>
+                                <option value="CUSTOMER">Customer</option>
+                                <option value="SELLER">Seller</option>
+                                <option value="DELIVERY_PERSON">Delivery Person</option>
+                            </select>
+                        </div>
+                        <div id="organization-field" style="display: none;">
+                            <div class="mb-3">
+                                <label for="new-user-organization" class="form-label">Organization ID</label>
+                                <input type="text" class="form-control" id="new-user-organization" placeholder="e.g., ORG-001">
+                            </div>
+                        </div>
+                        <div id="address-fields" style="display: none;">
+                            <hr>
+                            <h6 class="mb-3">Address (Required for Sellers/Customers)</h6>
+                            <div class="mb-3">
+                                <label for="new-user-street" class="form-label">Street</label>
+                                <input type="text" class="form-control" id="new-user-street" placeholder="123 Main St">
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="new-user-city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="new-user-city">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="new-user-state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="new-user-state">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="new-user-zip" class="form-label">Postal Code</label>
+                                    <input type="text" class="form-control" id="new-user-zip">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="new-user-country" class="form-label">Country</label>
+                                    <input type="text" class="form-control" id="new-user-country">
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="createUser()">
+                        <i class="ti ti-check me-1"></i>Create User
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -79,7 +79,7 @@ PUT /api/v1/orders/{id}/cancel    # Cancel order
 
 ### Deliveries (Blockchain)
 ```bash
-GET /api/v1/deliveries            # List all (role-filtered)
+GET /api/v1/deliveries            # Get my deliveries (Seller: their orders, DeliveryPerson: custodian or pending handoff, Customer: their orders)
 GET /api/v1/deliveries/{id}       # Get delivery details
 GET /api/v1/deliveries/{id}/history # Get history
 ```
@@ -261,13 +261,18 @@ curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
 
 | Status | Meaning |
 |--------|---------|
-| `PENDING_PICKUP` | Created, awaiting seller handoff |
+| `PENDING_PICKUP` | Created, awaiting seller to initiate handoff |
+| `PENDING_PICKUP_HANDOFF` | Seller initiated handoff, awaiting driver acceptance |
+| `DISPUTED_PICKUP_HANDOFF` | Driver disputed/refused pickup |
 | `IN_TRANSIT` | Being transported by delivery person |
-| `OUT_FOR_DELIVERY` | Final delivery attempt |
-| `DELIVERED` | Successfully delivered |
-| `DISPUTED_PICKUP` | Pickup handoff disputed |
-| `DISPUTED_TRANSIT` | Transit handoff disputed |
+| `PENDING_TRANSIT_HANDOFF` | Driver offering to next party |
+| `DISPUTED_TRANSIT_HANDOFF` | Transit handoff disputed |
+| `PENDING_DELIVERY_CONFIRMATION` | Awaiting customer confirmation |
+| `CONFIRMED_DELIVERY` | Successfully delivered |
 | `DISPUTED_DELIVERY` | Final delivery disputed |
+| `CANCELLED` | Delivery cancelled |
+
+**Note:** Sellers can only hand off to Delivery Persons. They cannot hand off directly to Customers.
 
 ## 📦 Order Statuses
 
@@ -301,7 +306,7 @@ curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
     country: string,
     timestamp: string
   },
-  package: {                 // Package dimensions (updated on handoffs)
+  package: {                 // Package dimensions (internal only, excluded from GET by ID)
     weight: number,
     length: number,
     width: number,
@@ -312,10 +317,13 @@ curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
 }
 ```
 
+> **Note:** Package weight and dimensions are stored internally but excluded from the `GET /deliveries/{id}` response for privacy. They are only used internally for handoff confirmation processing.
+
 **Access Control:**
 - Only involved parties (seller, customer, current holder, pending handoff recipient) can view/modify
 - Admin has read-only access to all deliveries
 - Cancel is restricted to customer only
+- Delivery persons can list other delivery persons for transit handoffs
 ```
 
 ### MongoDB Order

@@ -1,0 +1,373 @@
+/* MARKETPLACE - Custom Styles */
+
+/* General */
+:root {
+    --mp-primary: #0d6efd;
+    --mp-secondary: #6c757d;
+    --mp-success: #198754;
+    --mp-warning: #ffc107;
+    --mp-danger: #dc3545;
+    --mp-info: #0dcaf0;
+}
+
+body {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 10px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    border-radius: 10px 10px 0 0 !important;
+}
+
+/* Shop Item Cards */
+.shop-item-card {
+    height: 100%;
+}
+
+.shop-item-card .card-img-top {
+    height: 200px;
+    object-fit: cover;
+    border-radius: 10px 10px 0 0;
+}
+
+.shop-item-card .price-tag {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--mp-primary);
+}
+
+/* Status Badges */
+.status-badge {
+    font-size: 0.85rem;
+    padding: 0.4em 0.8em;
+    border-radius: 20px;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-confirmed, .status-picked-up {
+    background-color: #cff4fc;
+    color: #055160;
+}
+
+.status-in-transit, .status-processing {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+.status-delivered, .status-completed {
+    background-color: #198754;
+    color: white;
+}
+
+.status-cancelled, .status-failed {
+    background-color: #f8d7da;
+    color: #842029;
+}
+
+.status-awaiting-pickup {
+    background-color: #e2d9f3;
+    color: #432874;
+}
+
+.status-handoff-pending {
+    background-color: #ffe5d0;
+    color: #984c0c;
+}
+
+/* Timeline */
+.timeline {
+    position: relative;
+    padding: 20px 0;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(to bottom, var(--mp-primary), var(--mp-success));
+    border-radius: 2px;
+}
+
+.timeline-item {
+    position: relative;
+    padding-left: 60px;
+    padding-bottom: 25px;
+}
+
+.timeline-item:last-child {
+    padding-bottom: 0;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: 10px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--mp-primary);
+    border: 3px solid white;
+    box-shadow: 0 0 0 3px var(--mp-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.timeline-marker i {
+    color: white;
+    font-size: 12px;
+}
+
+.timeline-marker.completed {
+    background: var(--mp-success);
+    box-shadow: 0 0 0 3px var(--mp-success);
+}
+
+.timeline-marker.pending {
+    background: var(--mp-warning);
+    box-shadow: 0 0 0 3px var(--mp-warning);
+}
+
+.timeline-content {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.timeline-content h6 {
+    margin-bottom: 5px;
+    color: var(--mp-primary);
+}
+
+.timeline-content .time {
+    font-size: 0.85rem;
+    color: var(--mp-secondary);
+}
+
+.timeline-content .details {
+    font-size: 0.9rem;
+    color: #495057;
+    margin-top: 5px;
+}
+
+/* Dashboard Stats */
+.stat-card {
+    border-left: 4px solid var(--mp-primary);
+}
+
+.stat-card.success {
+    border-left-color: var(--mp-success);
+}
+
+.stat-card.warning {
+    border-left-color: var(--mp-warning);
+}
+
+.stat-card.info {
+    border-left-color: var(--mp-info);
+}
+
+.stat-card .stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.3;
+}
+
+.stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.stat-card .stat-label {
+    color: var(--mp-secondary);
+    font-size: 0.9rem;
+}
+
+/* Tables */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Buttons */
+.btn-action {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Login/Register Forms */
+#login-section, #register-section {
+    margin-top: 10vh;
+}
+
+/* Loading Spinner */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Section Headers */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.section-header h2 {
+    margin: 0;
+    color: #212529;
+}
+
+/* Order/Delivery Cards */
+.order-card, .delivery-card {
+    margin-bottom: 1rem;
+}
+
+.order-card .card-body, .delivery-card .card-body {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.order-info, .delivery-info {
+    flex: 1;
+}
+
+/* Quantity Badge */
+.quantity-badge {
+    background: var(--mp-primary);
+    color: white;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--mp-secondary);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Role Badge in Navbar */
+.role-badge {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
+
+/* Quick Actions */
+.quick-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Confirmation Code Display */
+.confirmation-code {
+    font-family: monospace;
+    font-size: 1.5rem;
+    background: #e9ecef;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    letter-spacing: 2px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .order-card .card-body, .delivery-card .card-body {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .quick-actions {
+        margin-top: 1rem;
+        width: 100%;
+    }
+    
+    .quick-actions .btn {
+        flex: 1;
+    }
+    
+    .section-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .section-header .btn {
+        width: 100%;
+    }
+}
+
+/* Transitions */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Admin specific */
+.admin-table {
+    font-size: 0.9rem;
+}
+
+.admin-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+/* Handoff info box */
+.handoff-info {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.handoff-info.success {
+    background: #d1e7dd;
+    border-color: #198754;
+}

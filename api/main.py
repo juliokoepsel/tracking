@@ -5,6 +5,8 @@ Main entry point for the API service
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 import logging
 import os
@@ -120,6 +122,17 @@ app.include_router(delivery.router)
 app.include_router(users.router)
 app.include_router(orders.router)
 app.include_router(shop_items.router)
+
+# Mount static files for UI
+app.mount("/static", StaticFiles(directory="/ui"), name="static")
+
+
+@app.get("/ui", tags=["ui"])
+async def serve_ui():
+    """
+    Serve the main UI page
+    """
+    return FileResponse("/ui/index.html")
 
 
 @app.get("/", tags=["health"])

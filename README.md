@@ -17,7 +17,7 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 │                     Client Applications                      │
 └──────────────────────┬──────────────────────────────────────┘
                        │
-                       │ REST API (JWT Auth)
+                       │ REST API (HTTP Basic Auth)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              FastAPI Service (Docker Container)              │
@@ -49,11 +49,11 @@ A production-ready, distributed package delivery tracking system leveraging bloc
 - **Shop Items**: Sellers manage product catalogs with pricing
 - **Blockchain Delivery Tracking**: All delivery data stored immutably on Hyperledger Fabric
 - **Smart Contracts**: Go-based chaincode with role validation and chaincode events
-- **RESTful API**: FastAPI endpoints with JWT authentication
+- **RESTful API**: FastAPI endpoints with HTTP Basic authentication
 - **Docker Containerization**: Fully containerized deployment
 
 ### Authentication & Authorization
-- **JWT Authentication**: Secure token-based API access
+- **HTTP Basic Authentication**: Secure username/password API access
 - **Multi-Role System**: Customer, Seller, Delivery Person, Admin roles
 - **Role-Based Access Control**: Endpoints restricted by user role
 - **Chaincode Role Enforcement**: Role validation at the blockchain level
@@ -153,16 +153,16 @@ Password: admin
 ## 📚 API Endpoints
 
 ### Authentication
-All endpoints require JWT authentication (except login/register). Include token in Authorization header:
+All endpoints require HTTP Basic authentication (except registration). Include credentials in the Authorization header:
 ```
-Authorization: Bearer <token>
+Authorization: Basic <base64(username:password)>
 ```
 
 ### Auth
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/auth/register` | Register new user |
-| POST | `/api/v1/auth/login` | Login and get JWT token |
+| POST | `/api/v1/auth/login` | Verify credentials (returns user info) |
 
 ### Users (Admin Only)
 | Method | Endpoint | Description |

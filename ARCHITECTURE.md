@@ -15,7 +15,7 @@
 │         └──────────────────┼──────────────────┘                          │
 └────────────────────────────┼─────────────────────────────────────────────┘
                              │
-                             │ HTTP/REST + JWT
+                             │ HTTP/REST + Basic Auth
                              ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        API Gateway Layer                                 │
@@ -57,14 +57,14 @@
 #### 1. Client Layer
 - **Purpose**: User interfaces for interacting with the system
 - **Technologies**: Web browsers, mobile apps, desktop applications
-- **Communication**: REST API over HTTP/HTTPS with JWT authentication
+- **Communication**: REST API over HTTP/HTTPS with HTTP Basic authentication
 
 #### 2. API Gateway Layer (FastAPI)
 - **Container**: `delivery-api`
 - **Port**: 8000
 - **Components**:
   - **Routes**: 
-    - `auth.py`: JWT authentication (login, register)
+    - `auth.py`: HTTP Basic authentication (login, register)
     - `users.py`: User management (Admin only)
     - `shop_items.py`: Product catalog (Seller)
     - `orders.py`: Order lifecycle (Customer creates, Seller confirms)
@@ -82,7 +82,7 @@
     - `event_listener.py`: Chaincode event sync
     - `database.py`: MongoDB initialization
 - **Features**:
-  - JWT Authentication
+  - HTTP Basic Authentication
   - Role-based access control
   - Automatic API documentation (Swagger/OpenAPI)
   - Request validation
@@ -241,7 +241,7 @@ Client                 API                  Fabric             Chaincode
 │                                                               │
 │  Application Layer                                           │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │  - JWT Authentication                                │    │
+│  │  - HTTP Basic Authentication                         │    │
 │  │  - Role-Based Access Control (RBAC)                  │    │
 │  │  - Input Validation (Pydantic)                       │    │
 │  │  - CORS Configuration                                │    │
@@ -370,7 +370,7 @@ services:
 | API Framework | FastAPI | 0.104.1 |
 | API Server | Uvicorn | 0.24.0 |
 | Data Validation | Pydantic | 2.5.0 |
-| Authentication | python-jose (JWT) | Latest |
+| Authentication | HTTP Basic (passlib + bcrypt) | Latest |
 | Password Hashing | passlib + bcrypt | Latest |
 | Off-Chain Database | MongoDB | Latest |
 | MongoDB ODM | Beanie | Latest |
@@ -399,7 +399,7 @@ services:
 ✓ **Decentralization**: Distributed ledger across peers
 ✓ **Smart Contracts**: Business logic with role enforcement
 ✓ **RESTful API**: Easy integration with any client
-✓ **JWT Authentication**: Secure token-based access
+✓ **HTTP Basic Authentication**: Secure username/password access
 ✓ **Role-Based Access**: Admin, Seller, DeliveryPerson, Customer
 ✓ **Off-Chain Storage**: PII and sensitive data in MongoDB
 ✓ **Chaincode Events**: Real-time status synchronization

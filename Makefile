@@ -74,13 +74,13 @@ health: ## Check system health
 	@curl -s http://localhost:8000/health | jq .
 	@printf "\n"
 
-list-orders: ## List all orders (requires auth token)
+list-orders: ## List all orders (requires auth)
 	@printf "$(GREEN)To list orders, use:$(NC)\n"
-	@printf "curl -H 'Authorization: Bearer <token>' http://localhost:8000/api/v1/orders\n"
+	@printf "curl -u 'username:password' http://localhost:8000/api/v1/orders\n"
 
-list-deliveries: ## List all deliveries (requires auth token)
+list-deliveries: ## List all deliveries (requires auth)
 	@printf "$(GREEN)To list deliveries, use:$(NC)\n"
-	@printf "curl -H 'Authorization: Bearer <token>' http://localhost:8000/api/v1/deliveries\n"
+	@printf "curl -u 'username:password' http://localhost:8000/api/v1/deliveries\n"
 
 backup: ## Backup blockchain data
 	@printf "$(YELLOW)Creating backup...$(NC)\n"

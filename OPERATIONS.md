@@ -185,22 +185,22 @@ make start
 # Register a seller
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username": "seller1", "password": "password123", "email": "seller@test.com", "role": "SELLER"}'
+  -d '{"username": "seller1", "password": "123123123", "email": "seller@test.com", "role": "SELLER"}'
 
 # Register a customer
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username": "customer1", "password": "password123", "email": "customer@test.com", "role": "CUSTOMER"}'
+  -d '{"username": "customer1", "password": "123123123", "email": "customer@test.com", "role": "CUSTOMER"}'
 
 # Register a delivery person
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username": "driver1", "password": "password123", "email": "driver@test.com", "role": "DELIVERY_PERSON"}'
+  -d '{"username": "driver1", "password": "123123123", "email": "driver@test.com", "role": "DELIVERY_PERSON"}'
 
 # 3. Login as seller to get token
 SELLER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "seller1", "password": "password123"}' | jq -r '.access_token')
+  -d '{"username": "seller1", "password": "123123123"}' | jq -r '.access_token')
 
 # 4. Seller creates shop item
 curl -X POST http://localhost:8000/api/v1/shop-items \
@@ -211,7 +211,7 @@ curl -X POST http://localhost:8000/api/v1/shop-items \
 # 5. Login as customer
 CUSTOMER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "customer1", "password": "password123"}' | jq -r '.access_token')
+  -d '{"username": "customer1", "password": "123123123"}' | jq -r '.access_token')
 
 # 6. Customer creates order (use shop item ID from step 4)
 curl -X POST http://localhost:8000/api/v1/orders \
@@ -235,7 +235,7 @@ curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/initi
 # 9. Delivery person confirms pickup (with location and package data)
 DRIVER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "driver1", "password": "password123"}' | jq -r '.access_token')
+  -d '{"username": "driver1", "password": "123123123"}' | jq -r '.access_token')
 
 curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/confirm \
   -H "Authorization: Bearer $DRIVER_TOKEN" \

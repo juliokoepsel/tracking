@@ -141,53 +141,6 @@ class ManualEventSync:
             logger.error(f"Manual sync failed for {delivery_id}: {e}")
             return False
             
-    @staticmethod
-    async def sync_all_orders_from_blockchain():
-        """
-        Sync all orders by reading their delivery status from blockchain.
-        Useful for recovery or initial sync.
-        
-        Note: This requires reading all deliveries from blockchain,
-        which can be expensive. Use sparingly.
-        """
-        from ..models.order import Order
-        from ..services.fabric_client import fabric_client
-        
-        # Get all orders with a delivery_id
-        orders = await Order.find(Order.delivery_id != None).to_list()
-        
-        synced = 0
-        failed = 0
-        
-        for order in orders:
-            try:
-                # Read delivery from blockchain
-                # Note: Using SELLER role as a default since we're doing admin sync
-                result = fabric_client.read_delivery(
-                    order.delivery_id,
-                    "SELLER"  # Admin sync uses SELLER role
-                )
-                
-                if result.get("success"):
-                    data = result.get("data", {})
-                    blockchain_status = data.get("deliveryStatus")
-                    
-                    if blockchain_status and blockchain_status != order.status.value:
-                        order.status = DeliveryStatus(blockchain_status)
-                        await order.save()
-                        synced += 1
-                        logger.info(f"Synced order {order.id}: {blockchain_status}")
-                else:
-                    failed += 1
-                    logger.warning(f"Failed to read delivery {order.delivery_id}")
-                    
-            except Exception as e:
-                failed += 1
-                logger.error(f"Error syncing order {order.id}: {e}")
-                
-        logger.info(f"Sync complete: {synced} synced, {failed} failed")
-        return {"synced": synced, "failed": failed}
-
 
 # Singleton instance
 event_listener = EventListener()

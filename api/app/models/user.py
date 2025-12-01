@@ -80,7 +80,7 @@ class UserCreate(BaseModel):
     """Schema for creating a new user"""
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
-    password: str = Field(..., min_length=6, max_length=100)
+    password: str = Field(..., min_length=8, max_length=100)
     role: UserRole
     full_name: str = Field(..., min_length=1, max_length=100)
     organization_id: Optional[str] = None
@@ -91,7 +91,7 @@ class UserCreate(BaseModel):
             "example": {
                 "username": "johndoe",
                 "email": "john@example.com",
-                "password": "123123",
+                "password": "123123123",
                 "role": "CUSTOMER",
                 "full_name": "John Doe",
                 "address": {

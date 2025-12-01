@@ -143,18 +143,22 @@ async def confirm_order(
 )
 async def list_orders(
     order_status: DeliveryStatus = None,
-    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN))
 ):
     """
     List orders:
     
     - **Sellers**: See orders where they are the seller
     - **Customers**: See their own orders
+    - **Admins**: See all orders (read-only)
     
     Optional filter:
     - **order_status**: Filter by delivery status
     """
-    if current_user.role == UserRole.SELLER:
+    if current_user.role == UserRole.ADMIN:
+        # Admin sees all orders
+        orders = await order_service.get_all_orders()
+    elif current_user.role == UserRole.SELLER:
         orders = await order_service.get_orders_by_seller(str(current_user.id))
     else:  # CUSTOMER
         orders = await order_service.get_orders_by_customer(str(current_user.id))
@@ -179,7 +183,7 @@ async def list_orders(
 )
 async def get_order(
     order_id: str,
-    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN))
 ):
     """
     Get detailed information about an order.
@@ -187,6 +191,7 @@ async def get_order(
     Access is role-based:
     - **Sellers**: Can view orders where they are the seller
     - **Customers**: Can view their own orders
+    - **Admins**: Can view any order (read-only)
     """
     order = await order_service.get_order_by_id(order_id)
     
@@ -196,8 +201,10 @@ async def get_order(
             detail="Order not found"
         )
     
-    # Validate access
-    if current_user.role == UserRole.SELLER:
+    # Validate access (admin can view any order)
+    if current_user.role == UserRole.ADMIN:
+        pass  # Admin has read-only access to all orders
+    elif current_user.role == UserRole.SELLER:
         if order.seller_id != str(current_user.id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -25,7 +25,6 @@
 │   │       └── shop_item_service.py
 │   ├── connection-profile.json
 │   ├── Dockerfile
-│   ├── examples.sh
 │   ├── main.py
 │   ├── organizations
 │   ├── postman-collection.json

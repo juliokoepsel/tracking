@@ -75,6 +75,16 @@ async def get_all_active_shop_items() -> List[ShopItem]:
     return await ShopItem.find(ShopItem.is_active == True).to_list()
 
 
+async def get_all_shop_items() -> List[ShopItem]:
+    """
+    Get all shop items including inactive (for admin access).
+    
+    Returns:
+        List of all ShopItems
+    """
+    return await ShopItem.find_all().to_list()
+
+
 async def update_shop_item(item: ShopItem, update_data: ShopItemUpdate) -> ShopItem:
     """
     Update a shop item.

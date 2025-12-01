@@ -91,7 +91,7 @@ class UserCreate(BaseModel):
             "example": {
                 "username": "johndoe",
                 "email": "john@example.com",
-                "password": "securepassword123",
+                "password": "123123",
                 "role": "CUSTOMER",
                 "full_name": "John Doe",
                 "address": {

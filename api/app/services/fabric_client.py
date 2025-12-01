@@ -135,6 +135,8 @@ class FabricClient:
         self,
         delivery_id: str,
         order_id: str,
+        seller_id: str,
+        customer_id: str,
         package_weight: float,
         dimension_length: float,
         dimension_width: float,
@@ -152,6 +154,8 @@ class FabricClient:
         args = [
             delivery_id,
             order_id,
+            seller_id,
+            customer_id,
             str(package_weight),
             str(dimension_length),
             str(dimension_width),
@@ -164,12 +168,12 @@ class FabricClient:
         ]
         return self.invoke_chaincode("CreateDelivery", args)
 
-    def read_delivery(self, delivery_id: str, caller_role: str) -> Dict[str, Any]:
+    def read_delivery(self, delivery_id: str, caller_id: str, caller_role: str) -> Dict[str, Any]:
         """
         Read a delivery from the blockchain.
-        SELLER, CUSTOMER, and DELIVERY_PERSON can read.
+        SELLER, CUSTOMER, DELIVERY_PERSON, and ADMIN can read (if involved or admin).
         """
-        return self.query_chaincode("ReadDelivery", [delivery_id, caller_role])
+        return self.query_chaincode("ReadDelivery", [delivery_id, caller_id, caller_role])
 
     def update_location(
         self,
@@ -195,7 +199,7 @@ class FabricClient:
     ) -> Dict[str, Any]:
         """
         Cancel a delivery.
-        Only SELLER can cancel, and only before first handoff.
+        Only CUSTOMER can cancel, and only before pickup.
         """
         args = [delivery_id, caller_id, caller_role]
         return self.invoke_chaincode("CancelDelivery", args)
@@ -222,14 +226,33 @@ class FabricClient:
     def confirm_handoff(
         self,
         delivery_id: str,
+        city: str,
+        state: str,
+        country: str,
+        package_weight: float,
+        dimension_length: float,
+        dimension_width: float,
+        dimension_height: float,
         caller_id: str,
         caller_role: str
     ) -> Dict[str, Any]:
         """
         Confirm a pending custody handoff.
         DELIVERY_PERSON or CUSTOMER can confirm handoffs.
+        Location and package dimensions are required.
         """
-        args = [delivery_id, caller_id, caller_role]
+        args = [
+            delivery_id,
+            city,
+            state,
+            country,
+            str(package_weight),
+            str(dimension_length),
+            str(dimension_width),
+            str(dimension_height),
+            caller_id,
+            caller_role
+        ]
         return self.invoke_chaincode("ConfirmHandoff", args)
 
     def dispute_handoff(
@@ -292,13 +315,14 @@ class FabricClient:
     def get_delivery_history(
         self,
         delivery_id: str,
+        caller_id: str,
         caller_role: str
     ) -> Dict[str, Any]:
         """
         Get the complete history of a delivery.
-        SELLER, CUSTOMER, and DELIVERY_PERSON can view history.
+        SELLER, CUSTOMER, DELIVERY_PERSON, and ADMIN can view history (if involved or admin).
         """
-        args = [delivery_id, caller_role]
+        args = [delivery_id, caller_id, caller_role]
         return self.query_chaincode("GetDeliveryHistory", args)
 
     # =====================

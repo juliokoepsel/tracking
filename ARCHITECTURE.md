@@ -122,13 +122,16 @@
 - **Name**: delivery
 - **Version**: 1.0
 - **Functions**:
-  - `CreateDelivery(delivery_id, order_id, seller_id, customer_id, role)`: Create delivery (Seller only)
+  - `CreateDelivery(delivery_id, order_id, seller_id, customer_id, role, ...)`: Create delivery (Seller only)
   - `GetDelivery(delivery_id)`: Retrieve delivery by ID
   - `GetAllDeliveries()`: List all deliveries
-  - `GetDeliveryHistory(delivery_id)`: Get transaction history
+  - `GetDeliveryHistory(delivery_id, caller_id)`: Get transaction history (involved parties or admin)
   - `InitiateHandoff(delivery_id, to_user_id, caller_id, role)`: Start custody transfer
-  - `ConfirmHandoff(delivery_id, caller_id, role)`: Accept pending handoff
+  - `ConfirmHandoff(delivery_id, caller_id, role, city, state, country, weight, length, width, height)`: Accept pending handoff (with location/package update)
+  - `CancelDelivery(delivery_id, caller_id, role)`: Cancel delivery (Customer only)
   - `DisputeHandoff(delivery_id, reason, caller_id, role)`: Dispute handoff
+- **Ownership Validation**: All operations validate caller is involved (seller, customer, current custodian, or pending handoff party)
+- **Admin Access**: Read-only access to all deliveries for monitoring
 - **Chaincode Events**:
   - `DeliveryCreated`: Emitted when delivery is created
   - `DeliveryStatusChanged`: Emitted on status change
@@ -248,12 +251,13 @@ Client                 API                  Fabric             Chaincode
 │  └─────────────────────────────────────────────────────┘    │
 │                                                               │
 │  Chaincode Layer                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
+│  ┌─────────────────────────────────────────────────────────┐    │
 │  │  - Role validation in every function                 │    │
 │  │  - Caller ID verification                            │    │
-│  │  - Ownership checks for handoffs                     │    │
+│  │  - Ownership/involvement checks for all operations   │    │
+│  │  - Admin read-only access (no write operations)      │    │
 │  │  - Status transition validation                      │    │
-│  └─────────────────────────────────────────────────────┘    │
+│  └─────────────────────────────────────────────────────────┘    │
 │                                                               │
 │  Network Layer                                               │
 │  ┌─────────────────────────────────────────────────────┐    │

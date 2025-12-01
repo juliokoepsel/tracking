@@ -232,13 +232,23 @@ curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/initi
   -H "Content-Type: application/json" \
   -d '{"to_user_id": "DRIVER_USER_ID"}'
 
-# 9. Delivery person confirms pickup
+# 9. Delivery person confirms pickup (with location and package data)
 DRIVER_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "driver1", "password": "password123"}' | jq -r '.access_token')
 
 curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/confirm \
-  -H "Authorization: Bearer $DRIVER_TOKEN"
+  -H "Authorization: Bearer $DRIVER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "city": "New York",
+    "state": "NY",
+    "country": "USA",
+    "package_weight": 2.5,
+    "dimension_length": 30,
+    "dimension_width": 20,
+    "dimension_height": 10
+  }'
 
 # 10. View delivery history
 curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
@@ -276,14 +286,36 @@ curl http://localhost:8000/api/v1/deliveries/{delivery_id}/history \
 {
   delivery_id: string,       // "del_abc123"
   order_id: string,          // Reference to MongoDB order
-  seller_id: string,         // Seller user ID
-  customer_id: string,       // Customer user ID
+  seller_id: string,         // Seller user ID (for ownership validation)
+  customer_id: string,       // Customer user ID (for ownership validation)
   current_holder_id: string, // Who has custody
   status: enum,              // See statuses above
-  pending_handoff_to: string | null,  // Pending handoff target
+  pending_handoff: {         // Pending handoff info (optional)
+    to_user_id: string,
+    from_user_id: string,
+    initiated_at: timestamp
+  } | null,
+  last_location: {           // Updated on handoff confirmations
+    city: string,
+    state: string,
+    country: string,
+    timestamp: string
+  },
+  package: {                 // Package dimensions (updated on handoffs)
+    weight: number,
+    length: number,
+    width: number,
+    height: number
+  },
   created_at: timestamp,
   updated_at: timestamp
 }
+```
+
+**Access Control:**
+- Only involved parties (seller, customer, current holder, pending handoff recipient) can view/modify
+- Admin has read-only access to all deliveries
+- Cancel is restricted to customer only
 ```
 
 ### MongoDB Order

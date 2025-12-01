@@ -71,6 +71,30 @@ class HandoffDispute(BaseModel):
         }
 
 
+class HandoffConfirm(BaseModel):
+    """Request to confirm a handoff (for delivery person)"""
+    city: str = Field(..., min_length=1, max_length=100)
+    state: str = Field(..., min_length=1, max_length=100)
+    country: str = Field(..., min_length=1, max_length=100)
+    package_weight: float = Field(..., gt=0, description="Package weight in kg")
+    package_length: float = Field(..., gt=0, description="Package length in cm")
+    package_width: float = Field(..., gt=0, description="Package width in cm")
+    package_height: float = Field(..., gt=0, description="Package height in cm")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "city": "Chicago",
+                "state": "IL",
+                "country": "USA",
+                "package_weight": 2.5,
+                "package_length": 40.0,
+                "package_width": 30.0,
+                "package_height": 10.0
+            }
+        }
+
+
 class DeliveryResponse(BaseModel):
     """Response for delivery operations"""
     success: bool
@@ -122,6 +146,33 @@ class DeliveryListResponse(BaseModel):
         }
 
 
+class DeliveryHistoryResponse(BaseModel):
+    """Response for delivery history"""
+    success: bool
+    message: str
+    count: int
+    data: List[Dict[str, Any]]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Delivery history retrieved successfully",
+                "count": 3,
+                "data": [
+                    {
+                        "txId": "abc123...",
+                        "timestamp": "2025-10-09T10:00:00Z",
+                        "delivery": {
+                            "deliveryId": "DEL-20251009-ABC12345",
+                            "deliveryStatus": "PENDING_PICKUP"
+                        }
+                    }
+                ]
+            }
+        }
+
+
 # ======================
 # Delivery Routes
 # ======================
@@ -134,15 +185,16 @@ class DeliveryListResponse(BaseModel):
 )
 async def get_delivery(
     delivery_id: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.DELIVERY_PERSON))
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.DELIVERY_PERSON, UserRole.ADMIN))
 ):
     """
     Retrieve a delivery by its ID.
     
-    Available to SELLER, CUSTOMER, and DELIVERY_PERSON.
+    Available to SELLER, CUSTOMER, DELIVERY_PERSON (if involved), and ADMIN.
     """
     result = await delivery_service.get_delivery(
         delivery_id=delivery_id,
+        caller_id=str(current_user.id),
         caller_role=current_user.role.value
     )
     
@@ -166,12 +218,12 @@ async def get_delivery(
     description="Get deliveries where current user is the custodian."
 )
 async def get_my_deliveries(
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON))
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.ADMIN))
 ):
     """
     Get all deliveries where the current user is the custodian.
     
-    Available to SELLER and DELIVERY_PERSON.
+    Available to SELLER, DELIVERY_PERSON, and ADMIN.
     """
     result = await delivery_service.get_my_deliveries(
         caller_id=str(current_user.id),
@@ -198,14 +250,15 @@ async def get_my_deliveries(
     "/status/{status}",
     response_model=DeliveryListResponse,
     summary="Get deliveries by status",
-    description="Get deliveries with a specific status where current user is custodian."
+    description="Get deliveries with a specific status where current user is involved."
 )
 async def get_deliveries_by_status(
     status: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.CUSTOMER))
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.CUSTOMER, UserRole.ADMIN))
 ):
     """
-    Get deliveries filtered by status where the current user is the custodian.
+    Get deliveries filtered by status where the current user is involved.
+    Admin can see all deliveries with the specified status.
     """
     result = await delivery_service.get_deliveries_by_status(
         status=status,
@@ -274,16 +327,16 @@ async def update_location(
     "/{delivery_id}/cancel",
     response_model=DeliveryResponse,
     summary="Cancel a delivery",
-    description="Cancel a delivery. Seller only, before pickup."
+    description="Cancel a delivery. Customer only, before pickup."
 )
 async def cancel_delivery(
     delivery_id: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER))
 ):
     """
     Cancel a delivery.
     
-    Only the SELLER who created the delivery can cancel it,
+    Only the CUSTOMER who ordered the delivery can cancel it,
     and only before it has been picked up.
     """
     result = await delivery_service.cancel_delivery(
@@ -309,21 +362,23 @@ async def cancel_delivery(
 
 @router.get(
     "/{delivery_id}/history",
-    response_model=DeliveryResponse,
+    response_model=DeliveryHistoryResponse,
     summary="Get delivery history",
-    description="Get the complete history of a delivery from blockchain."
+    description="Get the complete history of a delivery from blockchain. Only seller, customer, or admin."
 )
 async def get_delivery_history(
     delivery_id: str,
-    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.DELIVERY_PERSON))
+    current_user: User = Depends(require_roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.ADMIN))
 ):
     """
     Get the complete history of a delivery.
     
     Uses blockchain's GetHistoryForKey to retrieve all state changes.
+    Available to involved users and ADMIN.
     """
     result = await delivery_service.get_delivery_history(
         delivery_id=delivery_id,
+        caller_id=str(current_user.id),
         caller_role=current_user.role.value
     )
     
@@ -333,10 +388,12 @@ async def get_delivery_history(
             detail=result.get("error", "Failed to retrieve history")
         )
     
-    return DeliveryResponse(
+    history_data = result.get("data", [])
+    return DeliveryHistoryResponse(
         success=True,
         message="Delivery history retrieved successfully",
-        data=result.get("data")
+        count=len(history_data),
+        data=history_data
     )
 
 
@@ -397,19 +454,71 @@ async def initiate_handoff(
     "/{delivery_id}/handoff/confirm",
     response_model=DeliveryResponse,
     summary="Confirm a custody handoff",
-    description="Accept a pending custody transfer. Delivery person or Customer."
+    description="Accept a pending custody transfer. Delivery person must provide location and package info. Customer uses their address automatically."
 )
 async def confirm_handoff(
     delivery_id: str,
+    confirm_data: Optional[HandoffConfirm] = None,
     current_user: User = Depends(require_roles(UserRole.DELIVERY_PERSON, UserRole.CUSTOMER))
 ):
     """
     Confirm a pending custody handoff.
     
-    The intended recipient confirms they have received the package.
+    - DELIVERY_PERSON: Must provide location and package dimensions in request body
+    - CUSTOMER: Uses their profile address and keeps current package dimensions
     """
+    # For DELIVERY_PERSON, confirm_data is required
+    if current_user.role == UserRole.DELIVERY_PERSON:
+        if not confirm_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Delivery person must provide location and package information"
+            )
+        city = confirm_data.city
+        state = confirm_data.state
+        country = confirm_data.country
+        package_weight = confirm_data.package_weight
+        package_length = confirm_data.package_length
+        package_width = confirm_data.package_width
+        package_height = confirm_data.package_height
+    else:
+        # CUSTOMER - use their address from profile
+        if not current_user.address:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Customer must have an address configured to confirm delivery"
+            )
+        city = current_user.address.city
+        state = current_user.address.state
+        country = current_user.address.country
+        
+        # Get current package dimensions from the delivery
+        delivery_result = await delivery_service.get_delivery(
+            delivery_id=delivery_id,
+            caller_id=str(current_user.id),
+            caller_role=current_user.role.value
+        )
+        if not delivery_result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=delivery_result.get("error", "Delivery not found")
+            )
+        delivery_data = delivery_result.get("data", {})
+        package_weight = delivery_data.get("packageWeight", 0)
+        dimensions = delivery_data.get("packageDimensions", {})
+        package_length = dimensions.get("length", 0)
+        package_width = dimensions.get("width", 0)
+        package_height = dimensions.get("height", 0)
+    
     result = await delivery_service.confirm_handoff(
         delivery_id=delivery_id,
+        city=city,
+        state=state,
+        country=country,
+        package_weight=package_weight,
+        dimension_length=package_length,
+        dimension_width=package_width,
+        dimension_height=package_height,
         caller_id=str(current_user.id),
         caller_role=current_user.role.value
     )

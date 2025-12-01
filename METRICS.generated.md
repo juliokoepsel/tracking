@@ -10,8 +10,8 @@
 | .crt | 10 |
 | .yaml | 9 |
 | .md | 7 |
-| .sh | 5 |
 | .key | 5 |
+| .sh | 4 |
 | .txt | 2 |
 | .tx | 2 |
 | .json | 2 |
@@ -26,12 +26,12 @@
 
 | Language | Files | Lines |
 |----------|-------|-------|
-| Go | 2 | 832 |
-| Python | 17 | 3278 |
+| Go | 2 | 923 |
+| Python | 17 | 3481 |
 | YAML | 10 | 438 |
 | JSON | 2 | 332 |
-| Markdown | 7 | 2390 |
-| Shell | 5 | 664 |
+| Markdown | 7 | 2435 |
+| Shell | 4 | 362 |
 | Dockerfile | 2 | 64 |
 
-*Generated on Mon Dec  1 12:36:57 AM -03 2025*
+*Generated on Mon Dec  1 02:28:21 AM -03 2025*

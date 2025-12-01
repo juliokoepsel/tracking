@@ -69,15 +69,20 @@ async def create_shop_item(
     "",
     response_model=List[ShopItemResponse],
     summary="List all active shop items",
-    description="Get all active shop items. Accessible by customers and sellers."
+    description="Get all active shop items. Accessible by customers, sellers, and admins."
 )
 async def list_shop_items(
-    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN))
 ):
     """
     Get all active shop items for browsing.
+    Admins see all items (including inactive) for read-only access.
     """
-    items = await shop_item_service.get_all_active_shop_items()
+    if current_user.role == UserRole.ADMIN:
+        # Admin sees all items including inactive
+        items = await shop_item_service.get_all_shop_items()
+    else:
+        items = await shop_item_service.get_all_active_shop_items()
     return [item_to_response(item) for item in items]
 
 
@@ -107,14 +112,15 @@ async def list_my_shop_items(
     "/{item_id}",
     response_model=ShopItemResponse,
     summary="Get a shop item by ID",
-    description="Get details of a specific shop item. Accessible by customers and sellers."
+    description="Get details of a specific shop item. Accessible by customers, sellers, and admins."
 )
 async def get_shop_item(
     item_id: str,
-    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER))
+    current_user: User = Depends(require_roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN))
 ):
     """
     Get a specific shop item by ID.
+    Admins can view any item including inactive ones.
     """
     item = await shop_item_service.get_shop_item_by_id(item_id)
     
@@ -123,6 +129,10 @@ async def get_shop_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Shop item not found"
         )
+    
+    # Admin can see any item
+    if current_user.role == UserRole.ADMIN:
+        return item_to_response(item)
     
     # Non-sellers can only see active items
     if current_user.role != UserRole.SELLER and not item.is_active:

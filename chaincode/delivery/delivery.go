@@ -66,6 +66,8 @@ type PendingHandoff struct {
 type Delivery struct {
 	DeliveryID           string            `json:"deliveryId"`
 	OrderID              string            `json:"orderId"`       // Links to MongoDB Order
+	SellerID             string            `json:"sellerId"`      // ID of the seller who created the delivery
+	CustomerID           string            `json:"customerId"`    // ID of the customer who ordered
 	PackageWeight        float64           `json:"packageWeight"` // in kg
 	PackageDimensions    PackageDimensions `json:"packageDimensions"`
 	DeliveryStatus       DeliveryStatus    `json:"deliveryStatus"`
@@ -95,14 +97,9 @@ type DeliveryEvent struct {
 }
 
 // validateRole checks if the caller role is allowed for the operation
-// ADMIN has NO access to chaincode operations
+// ADMIN has NO access to write chaincode operations (except for read operations where explicitly allowed)
 func validateRole(callerRole string, allowedRoles ...UserRole) error {
 	role := UserRole(callerRole)
-
-	// Admin explicitly has no chaincode access
-	if role == RoleAdmin {
-		return fmt.Errorf("admin role is not authorized to access chaincode operations")
-	}
 
 	for _, allowed := range allowedRoles {
 		if role == allowed {
@@ -111,6 +108,32 @@ func validateRole(callerRole string, allowedRoles ...UserRole) error {
 	}
 
 	return fmt.Errorf("role %s is not authorized for this operation", callerRole)
+}
+
+// validateInvolvement checks if the caller is involved in the delivery
+// A user is involved if they are: seller, customer, current custodian, or part of pending handoff
+func validateInvolvement(delivery *Delivery, callerID string, callerRole string) error {
+	// Admin can always read
+	if UserRole(callerRole) == RoleAdmin {
+		return nil
+	}
+
+	// Check if caller is seller, customer, or current custodian
+	if delivery.SellerID == callerID ||
+		delivery.CustomerID == callerID ||
+		delivery.CurrentCustodianID == callerID {
+		return nil
+	}
+
+	// Check if caller is involved in pending handoff
+	if delivery.PendingHandoff != nil {
+		if delivery.PendingHandoff.FromUserID == callerID ||
+			delivery.PendingHandoff.ToUserID == callerID {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("not authorized to access this delivery")
 }
 
 // emitEvent emits a chaincode event
@@ -134,6 +157,8 @@ func (c *DeliveryContract) CreateDelivery(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
 	orderID string,
+	sellerID string,
+	customerID string,
 	packageWeight float64,
 	dimensionLength float64,
 	dimensionWidth float64,
@@ -163,6 +188,8 @@ func (c *DeliveryContract) CreateDelivery(
 	delivery := Delivery{
 		DeliveryID:    deliveryID,
 		OrderID:       orderID,
+		SellerID:      sellerID,
+		CustomerID:    customerID,
 		PackageWeight: packageWeight,
 		PackageDimensions: PackageDimensions{
 			Length: dimensionLength,
@@ -201,14 +228,15 @@ func (c *DeliveryContract) CreateDelivery(
 }
 
 // ReadDelivery retrieves a delivery from the ledger
-// SELLER, CUSTOMER, and DELIVERY_PERSON can read deliveries
+// SELLER, CUSTOMER, DELIVERY_PERSON, and ADMIN can read deliveries (if involved, or admin)
 func (c *DeliveryContract) ReadDelivery(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
+	callerID string,
 	callerRole string,
 ) (*Delivery, error) {
-	// Validate role - all roles except ADMIN can read
-	if err := validateRole(callerRole, RoleSeller, RoleCustomer, RoleDeliveryPerson); err != nil {
+	// Validate role - all roles can read (admin included for read operations)
+	if err := validateRole(callerRole, RoleSeller, RoleCustomer, RoleDeliveryPerson, RoleAdmin); err != nil {
 		return nil, err
 	}
 
@@ -224,6 +252,11 @@ func (c *DeliveryContract) ReadDelivery(
 	err = json.Unmarshal(deliveryJSON, &delivery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal delivery: %v", err)
+	}
+
+	// Validate involvement (admin bypasses this check)
+	if err := validateInvolvement(&delivery, callerID, callerRole); err != nil {
+		return nil, err
 	}
 
 	return &delivery, nil
@@ -379,9 +412,17 @@ func (c *DeliveryContract) InitiateHandoff(
 
 // ConfirmHandoff confirms a pending custody transfer (receiver confirms)
 // DELIVERY_PERSON or CUSTOMER can confirm handoffs
+// Location and package dimensions are required for tracking
 func (c *DeliveryContract) ConfirmHandoff(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
+	city string,
+	state string,
+	country string,
+	packageWeight float64,
+	dimensionLength float64,
+	dimensionWidth float64,
+	dimensionHeight float64,
 	callerID string,
 	callerRole string,
 ) error {
@@ -416,6 +457,21 @@ func (c *DeliveryContract) ConfirmHandoff(
 
 	// Clear pending handoff
 	delivery.PendingHandoff = nil
+
+	// Update location
+	delivery.LastLocation = Location{
+		City:    city,
+		State:   state,
+		Country: country,
+	}
+
+	// Update package dimensions and weight
+	delivery.PackageWeight = packageWeight
+	delivery.PackageDimensions = PackageDimensions{
+		Length: dimensionLength,
+		Width:  dimensionWidth,
+		Height: dimensionHeight,
+	}
 
 	// Update delivery status based on new holder
 	switch handoff.ToRole {
@@ -596,16 +652,16 @@ func (c *DeliveryContract) CancelHandoff(
 	return nil
 }
 
-// CancelDelivery cancels a delivery (only seller before pickup)
-// Only SELLER can cancel, and only before first handoff
+// CancelDelivery cancels a delivery (only customer can cancel, before pickup)
+// Only CUSTOMER can cancel their own delivery
 func (c *DeliveryContract) CancelDelivery(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
 	callerID string,
 	callerRole string,
 ) error {
-	// Validate role - only SELLER can cancel
-	if err := validateRole(callerRole, RoleSeller); err != nil {
+	// Validate role - only CUSTOMER can cancel
+	if err := validateRole(callerRole, RoleCustomer); err != nil {
 		return err
 	}
 
@@ -614,12 +670,12 @@ func (c *DeliveryContract) CancelDelivery(
 		return err
 	}
 
-	// Verify caller is the current custodian (seller who created it)
-	if delivery.CurrentCustodianID != callerID || delivery.CurrentCustodianRole != RoleSeller {
-		return fmt.Errorf("only the seller who created this delivery can cancel it")
+	// Verify caller is the customer for this delivery
+	if delivery.CustomerID != callerID {
+		return fmt.Errorf("only the customer can cancel this delivery")
 	}
 
-	// Can only cancel if still with seller (not yet picked up)
+	// Can only cancel if still pending pickup (not yet picked up)
 	if delivery.DeliveryStatus != StatusPendingPickup {
 		return fmt.Errorf("delivery can only be cancelled before pickup")
 	}
@@ -652,20 +708,22 @@ func (c *DeliveryContract) CancelDelivery(
 }
 
 // QueryDeliveriesByCustodian returns all deliveries held by a specific user
-// The caller can only query their own deliveries
+// The caller can only query their own deliveries, or admin sees all
 func (c *DeliveryContract) QueryDeliveriesByCustodian(
 	ctx contractapi.TransactionContextInterface,
 	custodianID string,
 	callerID string,
 	callerRole string,
 ) ([]*Delivery, error) {
-	// Validate role
-	if err := validateRole(callerRole, RoleSeller, RoleDeliveryPerson); err != nil {
+	// Validate role - include admin for read access
+	if err := validateRole(callerRole, RoleSeller, RoleDeliveryPerson, RoleAdmin); err != nil {
 		return nil, err
 	}
 
-	// Users can only query their own deliveries
-	if custodianID != callerID {
+	isAdmin := UserRole(callerRole) == RoleAdmin
+
+	// Non-admin users can only query their own deliveries
+	if !isAdmin && custodianID != callerID {
 		return nil, fmt.Errorf("can only query your own deliveries")
 	}
 
@@ -688,8 +746,18 @@ func (c *DeliveryContract) QueryDeliveriesByCustodian(
 			continue
 		}
 
-		if delivery.CurrentCustodianID == custodianID {
-			deliveries = append(deliveries, &delivery)
+		// Admin sees all deliveries matching custodian, others only see their own
+		if isAdmin {
+			if delivery.CurrentCustodianID == custodianID {
+				deliveries = append(deliveries, &delivery)
+			}
+		} else {
+			// For non-admin, also check involvement
+			if delivery.CurrentCustodianID == custodianID {
+				if validateInvolvement(&delivery, callerID, callerRole) == nil {
+					deliveries = append(deliveries, &delivery)
+				}
+			}
 		}
 	}
 
@@ -697,17 +765,19 @@ func (c *DeliveryContract) QueryDeliveriesByCustodian(
 }
 
 // QueryDeliveriesByStatus returns deliveries by status for the caller
-// Only returns deliveries where caller is the current custodian
+// Only returns deliveries where caller is involved, or admin sees all
 func (c *DeliveryContract) QueryDeliveriesByStatus(
 	ctx contractapi.TransactionContextInterface,
 	status string,
 	callerID string,
 	callerRole string,
 ) ([]*Delivery, error) {
-	// Validate role
-	if err := validateRole(callerRole, RoleSeller, RoleDeliveryPerson, RoleCustomer); err != nil {
+	// Validate role - include admin for read access
+	if err := validateRole(callerRole, RoleSeller, RoleDeliveryPerson, RoleCustomer, RoleAdmin); err != nil {
 		return nil, err
 	}
+
+	isAdmin := UserRole(callerRole) == RoleAdmin
 
 	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
 	if err != nil {
@@ -728,8 +798,15 @@ func (c *DeliveryContract) QueryDeliveriesByStatus(
 			continue
 		}
 
-		// Filter by status and custodian
-		if string(delivery.DeliveryStatus) == status && delivery.CurrentCustodianID == callerID {
+		// Filter by status
+		if string(delivery.DeliveryStatus) != status {
+			continue
+		}
+
+		// Admin sees all, others must be involved
+		if isAdmin {
+			deliveries = append(deliveries, &delivery)
+		} else if validateInvolvement(&delivery, callerID, callerRole) == nil {
 			deliveries = append(deliveries, &delivery)
 		}
 	}
@@ -738,15 +815,29 @@ func (c *DeliveryContract) QueryDeliveriesByStatus(
 }
 
 // GetDeliveryHistory returns the complete history of a delivery using blockchain's built-in history
-// SELLER, CUSTOMER, and DELIVERY_PERSON can view history
+// Only SELLER, CUSTOMER, and ADMIN can view the full history
 func (c *DeliveryContract) GetDeliveryHistory(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
+	callerID string,
 	callerRole string,
 ) ([]map[string]interface{}, error) {
-	// Validate role
-	if err := validateRole(callerRole, RoleSeller, RoleCustomer, RoleDeliveryPerson); err != nil {
+	// Validate role - only seller, customer, and admin can view history
+	if err := validateRole(callerRole, RoleSeller, RoleCustomer, RoleAdmin); err != nil {
+		return nil, fmt.Errorf("only seller, customer, or admin can view delivery history")
+	}
+
+	// First, read current delivery to check involvement
+	delivery, err := c.readDeliveryInternal(ctx, deliveryID)
+	if err != nil {
 		return nil, err
+	}
+
+	// Validate caller is the seller, customer, or admin
+	if UserRole(callerRole) != RoleAdmin {
+		if delivery.SellerID != callerID && delivery.CustomerID != callerID {
+			return nil, fmt.Errorf("only the seller or customer of this delivery can view its history")
+		}
 	}
 
 	resultsIterator, err := ctx.GetStub().GetHistoryForKey(deliveryID)
@@ -762,9 +853,9 @@ func (c *DeliveryContract) GetDeliveryHistory(
 			return nil, fmt.Errorf("failed to iterate history: %v", err)
 		}
 
-		var delivery Delivery
+		var historyDelivery Delivery
 		if len(response.Value) > 0 {
-			err = json.Unmarshal(response.Value, &delivery)
+			err = json.Unmarshal(response.Value, &historyDelivery)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal delivery: %v", err)
 			}
@@ -774,7 +865,7 @@ func (c *DeliveryContract) GetDeliveryHistory(
 			"txId":      response.TxId,
 			"timestamp": response.Timestamp,
 			"isDelete":  response.IsDelete,
-			"delivery":  delivery,
+			"delivery":  historyDelivery,
 		}
 		history = append(history, record)
 	}

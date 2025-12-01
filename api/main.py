@@ -68,10 +68,16 @@ app = FastAPI(
     
     ## User Roles
     
-    - **ADMIN**: User management only (no order/delivery access)
+    - **ADMIN**: User management + read-only access to orders, deliveries, and shop items
     - **SELLER**: Manage shop items, confirm orders, initiate handoffs
-    - **DELIVERY_PERSON**: Update location, handle handoffs
-    - **CUSTOMER**: Create orders, browse items, confirm delivery
+    - **DELIVERY_PERSON**: Confirm handoffs (with location/package update), handle custody
+    - **CUSTOMER**: Create orders, browse items, confirm final delivery, cancel deliveries
+    
+    ## Access Control
+    
+    - Users can only access deliveries where they are involved (seller, customer, custodian)
+    - Admin has read-only access to all resources for monitoring
+    - Cancel delivery is restricted to the customer only
     
     ## Order Flow
     

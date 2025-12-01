@@ -97,6 +97,16 @@ async def get_orders_by_seller(seller_id: str) -> List[Order]:
     return await Order.find(Order.seller_id == seller_id).to_list()
 
 
+async def get_all_orders() -> List[Order]:
+    """
+    Get all orders (for admin access).
+    
+    Returns:
+        List of all Orders
+    """
+    return await Order.find_all().to_list()
+
+
 async def confirm_order(
     order: Order,
     confirm_data: OrderConfirm,
@@ -137,6 +147,8 @@ async def confirm_order(
     result = fabric_client.create_delivery(
         delivery_id=delivery_id,
         order_id=str(order.id),
+        seller_id=seller_id,
+        customer_id=order.customer_id,
         package_weight=confirm_data.package_weight,
         dimension_length=confirm_data.package_length,
         dimension_width=confirm_data.package_width,

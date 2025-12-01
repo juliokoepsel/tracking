@@ -7,18 +7,19 @@ from typing import Dict, Any
 from ..services.fabric_client import fabric_client
 
 
-async def get_delivery(delivery_id: str, caller_role: str) -> Dict[str, Any]:
+async def get_delivery(delivery_id: str, caller_id: str, caller_role: str) -> Dict[str, Any]:
     """
     Get a delivery from the blockchain.
     
     Args:
         delivery_id: The ID of the delivery
+        caller_id: The ID of the caller
         caller_role: The role of the caller
         
     Returns:
         Dictionary with delivery data or error
     """
-    return fabric_client.read_delivery(delivery_id, caller_role)
+    return fabric_client.read_delivery(delivery_id, caller_id, caller_role)
 
 
 async def update_location(
@@ -107,6 +108,13 @@ async def initiate_handoff(
 
 async def confirm_handoff(
     delivery_id: str,
+    city: str,
+    state: str,
+    country: str,
+    package_weight: float,
+    dimension_length: float,
+    dimension_width: float,
+    dimension_height: float,
     caller_id: str,
     caller_role: str
 ) -> Dict[str, Any]:
@@ -115,6 +123,13 @@ async def confirm_handoff(
     
     Args:
         delivery_id: The ID of the delivery
+        city: Location city
+        state: Location state
+        country: Location country
+        package_weight: Package weight in kg
+        dimension_length: Package length in cm
+        dimension_width: Package width in cm
+        dimension_height: Package height in cm
         caller_id: The ID of the caller (recipient)
         caller_role: The role of the caller
         
@@ -123,6 +138,13 @@ async def confirm_handoff(
     """
     return fabric_client.confirm_handoff(
         delivery_id=delivery_id,
+        city=city,
+        state=state,
+        country=country,
+        package_weight=package_weight,
+        dimension_length=dimension_length,
+        dimension_width=dimension_width,
+        dimension_height=dimension_height,
         caller_id=caller_id,
         caller_role=caller_role
     )
@@ -223,6 +245,7 @@ async def get_deliveries_by_status(
 
 async def get_delivery_history(
     delivery_id: str,
+    caller_id: str,
     caller_role: str
 ) -> Dict[str, Any]:
     """
@@ -230,6 +253,7 @@ async def get_delivery_history(
     
     Args:
         delivery_id: The ID of the delivery
+        caller_id: The ID of the caller
         caller_role: The role of the caller
         
     Returns:
@@ -237,5 +261,6 @@ async def get_delivery_history(
     """
     return fabric_client.get_delivery_history(
         delivery_id=delivery_id,
+        caller_id=caller_id,
         caller_role=caller_role
     )

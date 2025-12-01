@@ -241,10 +241,20 @@ curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/initi
   -d '{"to_user_id": "delivery_person_id"}'
 ```
 
-**4. Delivery person confirms pickup:**
+**4. Delivery person confirms pickup (with location and package data):**
 ```bash
 curl -X POST http://localhost:8000/api/v1/deliveries/{delivery_id}/handoff/confirm \
-  -H "Authorization: Bearer <delivery_token>"
+  -H "Authorization: Bearer <delivery_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "city": "New York",
+    "state": "NY",
+    "country": "USA",
+    "package_weight": 2.5,
+    "dimension_length": 30,
+    "dimension_width": 20,
+    "dimension_height": 10
+  }'
 ```
 
 ## 🗂️ Project Structure

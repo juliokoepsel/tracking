@@ -23,6 +23,10 @@ class FabricClient:
         # Paths for crypto material
         self.msp_config_path = "/app/organizations/peerOrganizations/delivery.example.com/users/Admin@delivery.example.com/msp"
         self.orderer_address = os.getenv("ORDERER_ADDRESS", "orderer.example.com:7050")
+        
+        # TLS configuration
+        self.tls_enabled = os.getenv("FABRIC_TLS_ENABLED", "true").lower() == "true"
+        self.orderer_tls_ca = "/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
 
     def _execute_peer_command(self, args: List[str]) -> Dict[str, Any]:
         """
@@ -98,6 +102,10 @@ class FabricClient:
             "--waitForEvent"
         ]
         
+        # Add TLS flags if enabled
+        if self.tls_enabled:
+            cmd_args.extend(["--tls", "--cafile", self.orderer_tls_ca])
+        
         return self._execute_peer_command(cmd_args)
 
     def query_chaincode(self, function: str, args: List[str]) -> Dict[str, Any]:
@@ -124,6 +132,10 @@ class FabricClient:
             "-n", self.chaincode_name,
             "-c", args_json
         ]
+        
+        # Add TLS flag if enabled (queries go to peer which also uses TLS)
+        if self.tls_enabled:
+            cmd_args.append("--tls")
         
         return self._execute_peer_command(cmd_args)
 

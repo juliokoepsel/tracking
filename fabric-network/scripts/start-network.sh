@@ -96,13 +96,17 @@ docker-compose up -d orderer.example.com peer0.delivery.example.com cli
 echo -e "${YELLOW}Waiting for containers to be ready...${NC}"
 sleep 10
 
+# TLS CA file path (inside CLI container)
+ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
 # Create channel
 echo -e "${YELLOW}Creating channel: ${CHANNEL_NAME}...${NC}"
 docker exec cli peer channel create \
     -o orderer.example.com:7050 \
     -c ${CHANNEL_NAME} \
     -f ./channel-artifacts/${CHANNEL_NAME}.tx \
-    --outputBlock ./channel-artifacts/${CHANNEL_NAME}.block
+    --outputBlock ./channel-artifacts/${CHANNEL_NAME}.block \
+    --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Channel created${NC}"
 
@@ -118,7 +122,8 @@ echo -e "${YELLOW}Updating anchor peer...${NC}"
 docker exec cli peer channel update \
     -o orderer.example.com:7050 \
     -c ${CHANNEL_NAME} \
-    -f ./channel-artifacts/DeliveryOrgMSPanchors.tx
+    -f ./channel-artifacts/DeliveryOrgMSPanchors.tx \
+    --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Anchor peer updated${NC}"
 

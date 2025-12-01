@@ -40,7 +40,10 @@
   },
   "orderers": {
     "orderer.example.com": {
-      "url": "grpc://orderer.example.com:7050",
+      "url": "grpcs://orderer.example.com:7050",
+      "tlsCACerts": {
+        "path": "/app/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
+      },
       "grpcOptions": {
         "ssl-target-name-override": "orderer.example.com"
       }
@@ -48,7 +51,10 @@
   },
   "peers": {
     "peer0.delivery.example.com": {
-      "url": "grpc://peer0.delivery.example.com:7051",
+      "url": "grpcs://peer0.delivery.example.com:7051",
+      "tlsCACerts": {
+        "path": "/app/organizations/peerOrganizations/delivery.example.com/peers/peer0.delivery.example.com/tls/ca.crt"
+      },
       "grpcOptions": {
         "ssl-target-name-override": "peer0.delivery.example.com",
         "grpc.keepalive_time_ms": 600000
@@ -57,10 +63,13 @@
   },
   "certificateAuthorities": {
     "ca.delivery.example.com": {
-      "url": "http://ca.delivery.example.com:7054",
+      "url": "https://ca.delivery.example.com:7054",
+      "tlsCACerts": {
+        "path": "/app/organizations/peerOrganizations/delivery.example.com/ca/ca.delivery.example.com-cert.pem"
+      },
       "caName": "ca-deliveryorg",
       "httpOptions": {
-        "verify": false
+        "verify": true
       }
     }
   }

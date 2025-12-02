@@ -1362,9 +1362,30 @@ func (c *DeliveryContract) QueryDeliveriesByCustodian(
 		if err := fetchByIndex(IndexCustodianDelivery, caller.ID); err != nil {
 			return nil, err
 		}
-		// Also need to check for pending handoffs - these require full scan unfortunately
-		// because we don't have an index for pending handoff recipients
-		// This is a trade-off: we could add another index but it's a less common query
+		// Also fetch deliveries where they are the pending handoff target
+		// Uses CouchDB rich query since we don't have a composite key index for this
+		pendingQuery := fmt.Sprintf(`{
+			"selector": {
+				"pendingHandoff.toUserId": "%s"
+			}
+		}`, caller.ID)
+		pendingIterator, err := ctx.GetStub().GetQueryResult(pendingQuery)
+		if err == nil {
+			defer pendingIterator.Close()
+			for pendingIterator.HasNext() {
+				response, err := pendingIterator.Next()
+				if err != nil {
+					break
+				}
+				var delivery Delivery
+				if err := json.Unmarshal(response.Value, &delivery); err != nil {
+					continue
+				}
+				if delivery.DeliveryID != "" {
+					deliveryMap[delivery.DeliveryID] = &delivery
+				}
+			}
+		}
 	}
 
 	// Convert map to slice

@@ -1,0 +1,8 @@
+{
+  "index": {
+    "fields": ["pendingHandoff.toUserId", "docType"]
+  },
+  "ddoc": "indexPendingHandoffDoc",
+  "name": "indexPendingHandoff",
+  "type": "json"
+}

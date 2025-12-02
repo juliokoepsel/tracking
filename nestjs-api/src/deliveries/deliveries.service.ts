@@ -322,6 +322,30 @@ export class DeliveriesService {
   }
 
   /**
+   * Query deliveries by company (multi-tenant support)
+   * Only sellers belonging to the company can query their company's deliveries
+   */
+  async getDeliveriesByCompany(userId: string, companyId: string): Promise<Delivery[]> {
+    await this.ensureIdentity(userId);
+
+    try {
+      const result = await this.fabricGatewayService.evaluateTransaction(
+        userId,
+        'QueryDeliveriesByCompany',
+        companyId,
+      );
+
+      return JSON.parse(new TextDecoder().decode(result)) as Delivery[];
+    } catch (error: any) {
+      if (error.message?.includes('only query your own company')) {
+        throw new BadRequestException('Can only query your own company\'s deliveries');
+      }
+      this.logger.error(`Failed to query deliveries by company: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Get delivery history from blockchain
    */
   async getDeliveryHistory(userId: string, deliveryId: string): Promise<DeliveryHistoryRecord[]> {

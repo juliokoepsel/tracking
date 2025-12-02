@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WalletService } from './wallet.service';
 import { createIdentity, createSigner, FabricIdentity } from './fabric.types';
+import { FabricOrg } from '../common/enums';
 
 interface OrgConnection {
   client: grpc.Client;
@@ -21,6 +22,7 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
   private activeGateways = new Map<string, Gateway>();
   private channelName: string;
   private chaincodeName: string;
+  private currentOrg: string | null; // The org this API instance serves (null = all orgs for backward compat)
 
   constructor(
     private configService: ConfigService,
@@ -28,6 +30,9 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
   ) {
     this.channelName = this.configService.get<string>('CHANNEL_NAME', 'deliverychannel');
     this.chaincodeName = this.configService.get<string>('CHAINCODE_NAME', 'delivery');
+    // ORG_NAME determines which org this API instance serves
+    // If not set, initialize all orgs (backward compatible single-API mode)
+    this.currentOrg = this.configService.get<string>('ORG_NAME') || null;
   }
 
   async onModuleInit() {
@@ -48,6 +53,13 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
     this.orgConnections.clear();
   }
 
+  /**
+   * Get the organization this API instance serves
+   */
+  getCurrentOrg(): string | null {
+    return this.currentOrg;
+  }
+
   private async initializeConnections() {
     const cryptoPath = this.configService.get<string>(
       'FABRIC_CRYPTO_PATH',
@@ -56,26 +68,38 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
 
     const peerConfigs = [
       {
-        org: 'PlatformOrg',
+        org: FabricOrg.PLATFORM,
         peerEndpoint: this.configService.get<string>('PEER_PLATFORM_ENDPOINT', 'localhost:7051'),
         peerHostAlias: 'peer0.platform.example.com',
         tlsCertPath: path.join(cryptoPath, 'peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt'),
       },
       {
-        org: 'SellersOrg',
+        org: FabricOrg.SELLERS,
         peerEndpoint: this.configService.get<string>('PEER_SELLERS_ENDPOINT', 'localhost:8051'),
         peerHostAlias: 'peer0.sellers.example.com',
         tlsCertPath: path.join(cryptoPath, 'peerOrganizations/sellers.example.com/peers/peer0.sellers.example.com/tls/ca.crt'),
       },
       {
-        org: 'LogisticsOrg',
+        org: FabricOrg.LOGISTICS,
         peerEndpoint: this.configService.get<string>('PEER_LOGISTICS_ENDPOINT', 'localhost:9051'),
         peerHostAlias: 'peer0.logistics.example.com',
         tlsCertPath: path.join(cryptoPath, 'peerOrganizations/logistics.example.com/peers/peer0.logistics.example.com/tls/ca.crt'),
       },
     ];
 
-    for (const config of peerConfigs) {
+    // Filter to only the configured org if ORG_NAME is set (decentralized mode)
+    // If ORG_NAME is not set, initialize all orgs (backward compatible single-API mode)
+    const configsToInit = this.currentOrg
+      ? peerConfigs.filter(c => c.org === this.currentOrg)
+      : peerConfigs;
+
+    if (this.currentOrg) {
+      this.logger.log(`Decentralized mode: initializing only ${this.currentOrg} peer connection`);
+    } else {
+      this.logger.log(`Single-API mode: initializing all peer connections`);
+    }
+
+    for (const config of configsToInit) {
       try {
         if (!fs.existsSync(config.tlsCertPath)) {
           this.logger.warn(`TLS cert not found for ${config.org}, skipping peer connection`);
@@ -136,10 +160,19 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
     const identity = createIdentity(fabricIdentity.mspId, fabricIdentity.certificate);
     const signer = createSigner(fabricIdentity.privateKey);
 
+    // Check if discovery should use localhost (for local development)
+    const discoveryAsLocalhost = this.configService.get<string>('DISCOVERY_AS_LOCALHOST', 'true') === 'true';
+
     const gateway = connect({
       client: connection.client,
       identity,
       signer,
+      // Enable service discovery for multi-org endorsement
+      // This allows the gateway to find endorsing peers from all organizations
+      discovery: {
+        enabled: true,
+        asLocalhost: discoveryAsLocalhost,
+      },
       evaluateOptions: () => ({ deadline: Date.now() + 30000 }), // 30 seconds
       endorseOptions: () => ({ deadline: Date.now() + 60000 }), // 60 seconds
       submitOptions: () => ({ deadline: Date.now() + 60000 }),

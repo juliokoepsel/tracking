@@ -24,12 +24,27 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED',
 }
 
+// Organization names
+export enum FabricOrg {
+  PLATFORM = 'PlatformOrg',
+  SELLERS = 'SellersOrg',
+  LOGISTICS = 'LogisticsOrg',
+}
+
+// MSP IDs
+export enum FabricMSP {
+  PLATFORM = 'PlatformOrgMSP',
+  SELLERS = 'SellersOrgMSP',
+  LOGISTICS = 'LogisticsOrgMSP',
+}
+
 // Maps user role to Fabric organization
+// In decentralized mode, this is used to determine which org's API a user should use
 export const RoleToOrgMap: Record<UserRole, string> = {
-  [UserRole.ADMIN]: 'PlatformOrg',
-  [UserRole.CUSTOMER]: 'PlatformOrg',
-  [UserRole.SELLER]: 'SellersOrg',
-  [UserRole.DELIVERY_PERSON]: 'LogisticsOrg',
+  [UserRole.ADMIN]: FabricOrg.PLATFORM,
+  [UserRole.CUSTOMER]: FabricOrg.PLATFORM,
+  [UserRole.SELLER]: FabricOrg.SELLERS,
+  [UserRole.DELIVERY_PERSON]: FabricOrg.LOGISTICS,
 };
 
 // Maps user role to Fabric CA
@@ -42,8 +57,30 @@ export const RoleToCAMap: Record<UserRole, string> = {
 
 // Maps user role to MSP ID
 export const RoleToMSPMap: Record<UserRole, string> = {
-  [UserRole.ADMIN]: 'PlatformOrgMSP',
-  [UserRole.CUSTOMER]: 'PlatformOrgMSP',
-  [UserRole.SELLER]: 'SellersOrgMSP',
-  [UserRole.DELIVERY_PERSON]: 'LogisticsOrgMSP',
+  [UserRole.ADMIN]: FabricMSP.PLATFORM,
+  [UserRole.CUSTOMER]: FabricMSP.PLATFORM,
+  [UserRole.SELLER]: FabricMSP.SELLERS,
+  [UserRole.DELIVERY_PERSON]: FabricMSP.LOGISTICS,
+};
+
+// Maps org name to MSP ID
+export const OrgToMSPMap: Record<string, string> = {
+  [FabricOrg.PLATFORM]: FabricMSP.PLATFORM,
+  [FabricOrg.SELLERS]: FabricMSP.SELLERS,
+  [FabricOrg.LOGISTICS]: FabricMSP.LOGISTICS,
+};
+
+// Maps MSP ID to org name
+export const MSPToOrgMap: Record<string, string> = {
+  [FabricMSP.PLATFORM]: FabricOrg.PLATFORM,
+  [FabricMSP.SELLERS]: FabricOrg.SELLERS,
+  [FabricMSP.LOGISTICS]: FabricOrg.LOGISTICS,
+};
+
+// Roles allowed for each organization
+// Used to validate that users are registering with the correct org's API
+export const OrgAllowedRoles: Record<string, UserRole[]> = {
+  [FabricOrg.PLATFORM]: [UserRole.ADMIN, UserRole.CUSTOMER],
+  [FabricOrg.SELLERS]: [UserRole.SELLER],
+  [FabricOrg.LOGISTICS]: [UserRole.DELIVERY_PERSON],
 };

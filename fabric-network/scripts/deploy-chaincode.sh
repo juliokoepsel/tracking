@@ -35,10 +35,9 @@ CHAINCODE_LABEL="${CHAINCODE_NAME}_${CHAINCODE_VERSION}"
 
 # Endorsement policy: 2 out of 3 organizations must endorse transactions
 # This ensures cross-organization validation for all delivery state changes
-# Using signature policy: OutOf(2, PlatformOrg.member, SellersOrg.member, LogisticsOrg.member)
-# Change to OR policy for single-peer gateway architecture
-# For production, implement service discovery for 2-of-3 endorsement
-ENDORSEMENT_POLICY="OR('PlatformOrgMSP.member', 'SellersOrgMSP.member', 'LogisticsOrgMSP.member')"
+# No single organization can forge transactions - requires collusion of at least 2 orgs
+# Service discovery is enabled in the gateway to find endorsing peers across organizations
+ENDORSEMENT_POLICY="OutOf(2, 'PlatformOrgMSP.member', 'SellersOrgMSP.member', 'LogisticsOrgMSP.member')"
 
 # Private Data Collections config
 COLLECTIONS_CONFIG="/opt/gopath/src/github.com/chaincode/delivery/collections_config.json"

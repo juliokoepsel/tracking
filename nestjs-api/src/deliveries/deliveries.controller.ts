@@ -86,6 +86,21 @@ export class DeliveriesController {
     };
   }
 
+  @Get('company/:companyId')
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
+  async getByCompany(
+    @CurrentUser() user: CurrentUserData,
+    @Param('companyId') companyId: string,
+  ) {
+    const deliveries = await this.deliveriesService.getDeliveriesByCompany(user.id, companyId);
+
+    return {
+      success: true,
+      count: deliveries.length,
+      data: deliveries,
+    };
+  }
+
   @Get(':id')
   @Roles(UserRole.SELLER, UserRole.CUSTOMER, UserRole.DELIVERY_PERSON, UserRole.ADMIN)
   async getDelivery(

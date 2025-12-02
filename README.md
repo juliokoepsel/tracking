@@ -1,33 +1,37 @@
 # Blockchain Delivery Tracking System
 
-A production-ready multi-organization Hyperledger Fabric delivery tracking system with a NestJS API. Each user gets their own X.509 certificate for blockchain identity, enabling true per-user transaction signing and immutable audit trails.
+A production-ready **decentralized** multi-organization Hyperledger Fabric delivery tracking system. Each organization runs their own API instance with separate database, achieving true organizational decentralization. Users get X.509 certificates with embedded role and company attributes for blockchain identity.
 
 ## Features
 
 ### Core Features
 - **Multi-Org Blockchain Network**: 3 organizations (Platform, Sellers, Logistics) with Raft consensus
+- **Decentralized Infrastructure**: Each org runs their own API + MongoDB instance
 - **Per-User X.509 Identities**: Each user enrolled via Fabric CA gets their own blockchain identity
 - **Role-Based Access Control**: Customers, Sellers, Delivery Persons with organization-based permissions
+- **Multi-Tenant Company Support**: Multiple companies can exist within each organization
 - **Two-Phase Custody Handoffs**: Secure package transfers with initiate/confirm flow
+- **State-Based Endorsement**: Per-delivery endorsement policies follow custody chain
 - **Dispute Handling**: Recipients can dispute handoffs with reasons recorded on blockchain
 - **Immutable Audit Trail**: Full history of all delivery state changes with transaction IDs
-- **Full TLS/HTTPS**: All services communicate over TLS (Fabric network, API, MongoDB, UI)
 
-### Security Features (v2.0)
-- **Encrypted Wallet Storage**: AES-256-GCM encryption with PBKDF2 key derivation for private keys
+### Security Features
+- **Encrypted Wallet Storage**: AES-256-GCM encryption with per-org encryption keys
 - **2-of-3 Endorsement Policy**: Transactions require endorsement from at least 2 organizations
+- **Per-Key State Validation**: Custody changes require endorsement from current custodian's org
+- **Service Discovery**: Dynamic peer discovery via gossip protocol
 - **Input Validation**: Comprehensive chaincode-level validation (delivery ID format, weights, dimensions)
 - **Private Data Collections**: 
   - `deliveryPrivateDetails`: Sensitive address/contact info (Platform + Sellers)
   - `handoffPrivateData`: Photo/signature hashes (Logistics + Platform)
   - `pricingData`: Confidential pricing (Sellers only)
 
-### Performance Features (v2.0)
+### Performance Features
 - **CouchDB State Database**: Rich query support with JSON document storage
-- **Composite Key Indexes**: O(log n) lookups for seller, customer, custodian, and status queries
+- **Composite Key Indexes**: O(log n) lookups for seller, customer, custodian, status, and company queries
 - **CouchDB Rich Queries**: Date range queries, location-based queries, custom selectors
 
-### Real-Time Features (v2.0)
+### Real-Time Features
 - **Chaincode Event Subscription**: NestJS listens to blockchain events
 - **WebSocket Gateway**: Real-time push notifications to frontend clients
 - **Event Types**: delivery:created, delivery:statusChanged, handoff:initiated/confirmed/disputed
@@ -35,40 +39,67 @@ A production-ready multi-organization Hyperledger Fabric delivery tracking syste
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           Docker Network (fabric_network)                       │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │                        Raft Orderer Cluster                             │    │
-│  │   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐                 │    │
-│  │   │  orderer1     │ │  orderer2     │ │  orderer3     │                 │    │
-│  │   │  :7050        │ │  :8050        │ │  :9050        │                 │    │
-│  │   └───────────────┘ └───────────────┘ └───────────────┘                 │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-│                                                                                 │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │                     Peer Organizations + CouchDB                        │    │
-│  │                                                                         │    │
-│  │  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐         │    │
-│  │  │   PlatformOrg    │ │   SellersOrg     │ │  LogisticsOrg    │         │    │
-│  │  │                  │ │                  │ │                  │         │    │
-│  │  │  peer0 :7051     │ │  peer0 :8051     │ │  peer0 :9051     │         │    │
-│  │  │  ca    :7054     │ │  ca    :8054     │ │  ca    :9054     │         │    │
-│  │  │  couchdb :5984   │ │  couchdb :6984   │ │  couchdb :7984   │         │    │
-│  │  │                  │ │                  │ │                  │         │    │
-│  │  │  Users:          │ │  Users:          │ │  Users:          │         │    │
-│  │  │  - Customers     │ │  - Sellers       │ │  - Drivers       │         │    │
-│  │  │  - Admins        │ │                  │ │                  │         │    │
-│  │  └──────────────────┘ └──────────────────┘ └──────────────────┘         │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-│                                                                                 │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐               │
-│  │  NestJS API      │  │  MongoDB         │  │  Chaincode       │               │
-│  │  :3000 (HTTPS)   │  │  :27017 (TLS)    │  │  (delivery)      │               │
-│  │  WebSocket       │  │                  │  │  + PDC           │               │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘               │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           Docker Network (fabric_network)                           │
+│                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        Raft Orderer Cluster                                 │    │
+│  │   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐                     │    │
+│  │   │  orderer1     │ │  orderer2     │ │  orderer3     │                     │    │
+│  │   │  :7050        │ │  :8050        │ │  :9050        │                     │    │
+│  │   └───────────────┘ └───────────────┘ └───────────────┘                     │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                     Peer Organizations + CouchDB                            │    │
+│  │                                                                             │    │
+│  │  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐             │    │
+│  │  │   PlatformOrg    │ │   SellersOrg     │ │  LogisticsOrg    │             │    │
+│  │  │                  │ │                  │ │                  │             │    │
+│  │  │  peer0 :7051     │ │  peer0 :8051     │ │  peer0 :9051     │             │    │
+│  │  │  ca    :7054     │ │  ca    :8054     │ │  ca    :9054     │             │    │
+│  │  │  couchdb :5984   │ │  couchdb :6984   │ │  couchdb :7984   │             │    │
+│  │  │                  │ │                  │ │                  │             │    │
+│  │  │  Users:          │ │  Users:          │ │  Users:          │             │    │
+│  │  │  - Customers     │ │  - Sellers       │ │  - Drivers       │             │    │
+│  │  │  - Admins        │ │  (+ companies)   │ │  (+ companies)   │             │    │
+│  │  └──────────────────┘ └──────────────────┘ └──────────────────┘             │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                    Decentralized API Layer (per-org)                        │    │
+│  │                                                                             │    │
+│  │  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐             │    │
+│  │  │  api-platform    │ │  api-sellers     │ │  api-logistics   │             │    │
+│  │  │  :3001           │ │  :3002           │ │  :3003           │             │    │
+│  │  │  mongodb-platform│ │  mongodb-sellers │ │  mongodb-logistics│            │    │
+│  │  │  :27017          │ │  :27018          │ │  :27019          │             │    │
+│  │  └──────────────────┘ └──────────────────┘ └──────────────────┘             │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                     │
+│  ┌──────────────────┐                                                               │
+│  │  Chaincode       │  Endorsement: OutOf(2, PlatformMSP, SellersMSP, LogisticsMSP) │
+│  │  (delivery)      │  + Per-key state-based endorsement (custody chain)            │
+│  │  + PDC           │                                                               │
+│  └──────────────────┘                                                               │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Decentralization Model
+
+Each organization operates independently:
+
+| Organization | API Endpoint | Database | Users | Wallet Encryption |
+|-------------|--------------|----------|-------|-------------------|
+| PlatformOrg | `localhost:3001` | `mongodb-platform:27017` | Customers, Admins | `WALLET_ENCRYPTION_KEY_PLATFORM` |
+| SellersOrg | `localhost:3002` | `mongodb-sellers:27018` | Sellers (+companies) | `WALLET_ENCRYPTION_KEY_SELLERS` |
+| LogisticsOrg | `localhost:3003` | `mongodb-logistics:27019` | Delivery Persons (+companies) | `WALLET_ENCRYPTION_KEY_LOGISTICS` |
+
+**Key Properties:**
+- No single org controls all user data or submission endpoints
+- Each org manages only their own users' private keys
+- 2-of-3 endorsement required for all blockchain transactions
+- Per-delivery state policies follow custody chain
 
 ## Quick Start
 
@@ -110,10 +141,12 @@ This will:
 
 ### Access Points
 
-- **UI**: https://localhost
-- **API**: https://localhost:3000/api/v1
-- **Health**: https://localhost:3000/api/v1/health
-- **WebSocket**: wss://localhost:3000/delivery-events
+**Per-Organization APIs:**
+- **Platform API**: http://localhost:3001/api/v1 (Customers, Admins)
+- **Sellers API**: http://localhost:3002/api/v1 (Sellers)
+- **Logistics API**: http://localhost:3003/api/v1 (Delivery Persons)
+
+**Blockchain Explorer:**
 - **CouchDB** (PlatformOrg): http://localhost:5984 (admin:adminpw)
 - **CouchDB** (SellersOrg): http://localhost:6984 (admin:adminpw)
 - **CouchDB** (LogisticsOrg): http://localhost:7984 (admin:adminpw)
@@ -121,70 +154,83 @@ This will:
 ### Verify System Health
 
 ```bash
-# Using curl with -k to skip certificate verification
-curl -k https://localhost:3000/api/v1/health
+# Check each org's API health
+curl http://localhost:3001/api/v1/health  # Platform
+curl http://localhost:3002/api/v1/health  # Sellers
+curl http://localhost:3003/api/v1/health  # Logistics
 ```
 
 ## API Usage
 
 ### Authentication
 
+Each user type registers with their organization's API:
+
 #### Register Users
 
 ```bash
-# Register a seller (enrolled to SellersOrg)
-curl -k -X POST https://localhost:3000/api/v1/auth/register \
+# Register a seller (via Sellers API - port 3002)
+curl -X POST http://localhost:3002/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
+    "username": "seller1",
     "email": "seller@example.com",
     "password": "password123",
-    "name": "Test Seller",
+    "fullName": "Test Seller",
     "role": "SELLER",
-    "address": {
-      "street": "123 Seller St",
-      "city": "NYC",
-      "state": "NY",
-      "zipCode": "10001",
-      "country": "US"
-    }
+    "companyId": "acme-corp",
+    "companyName": "Acme Corporation"
   }'
 
-# Register a customer (enrolled to PlatformOrg)
-curl -k -X POST https://localhost:3000/api/v1/auth/register \
+# Register a customer (via Platform API - port 3001)
+curl -X POST http://localhost:3001/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
+    "username": "customer1",
     "email": "customer@example.com",
     "password": "password123",
-    "name": "Test Customer",
+    "fullName": "Test Customer",
     "role": "CUSTOMER",
     "address": {
       "street": "456 Customer Ave",
       "city": "Brooklyn",
       "state": "NY",
-      "zipCode": "11201",
+      "postalCode": "11201",
       "country": "US"
     }
   }'
 
-# Register a delivery person (enrolled to LogisticsOrg)
-curl -k -X POST https://localhost:3000/api/v1/auth/register \
+# Register a delivery person (via Logistics API - port 3003)
+curl -X POST http://localhost:3003/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
+    "username": "driver1",
     "email": "driver@example.com",
     "password": "password123",
-    "name": "Test Driver",
+    "fullName": "Test Driver",
     "role": "DELIVERY_PERSON",
-    "vehicleInfo": "White Van - ABC123"
+    "vehicleInfo": {
+      "type": "Van",
+      "licensePlate": "ABC123"
+    },
+    "companyId": "fast-logistics",
+    "companyName": "Fast Logistics Inc"
   }'
 ```
 
 #### Login
 
 ```bash
-# Login returns a JWT token
-curl -k -X POST https://localhost:3000/api/v1/auth/login \
+# Login to appropriate org's API
+# Sellers login to port 3002
+curl -X POST http://localhost:3002/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "seller@example.com", "password": "password123"}'
+  -d '{"username": "seller1", "password": "password123"}'
+
+# Customers login to port 3001
+curl -X POST http://localhost:3001/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "customer1", "password": "password123"}'
 
 # Store token for subsequent requests
 export TOKEN="<jwt_token_from_response>"
@@ -396,7 +442,7 @@ IN_TRANSIT
 tracking/
 ├── chaincode/
 │   └── delivery/
-│       ├── delivery.go           # Smart contract implementation
+│       ├── delivery.go           # Smart contract (+ state-based endorsement)
 │       ├── main.go               # Chaincode entry point
 │       ├── collections_config.json  # Private Data Collections config
 │       └── META-INF/
@@ -408,20 +454,21 @@ tracking/
 │   ├── organizations/            # Generated crypto material
 │   └── scripts/
 │       ├── start-network.sh
-│       ├── deploy-chaincode.sh   # Includes endorsement policy + PDC
+│       ├── deploy-chaincode.sh   # 2-of-3 endorsement policy
 │       └── cleanup.sh
 ├── nestjs-api/
 │   └── src/
 │       ├── auth/                 # JWT authentication
-│       ├── users/                # User management (MongoDB)
+│       ├── users/                # User management (per-org MongoDB)
 │       ├── shop-items/           # Shop items (MongoDB)
 │       ├── orders/               # Orders (MongoDB)
 │       ├── deliveries/           # Delivery operations (Blockchain)
 │       ├── events/               # WebSocket gateway
+│       ├── common/enums.ts       # Org/MSP mappings, role permissions
 │       └── fabric/               # Fabric Gateway, CA, Events services
-│           ├── fabric-gateway.service.ts
-│           ├── fabric-ca.service.ts
-│           ├── wallet.service.ts       # Encrypted wallet storage
+│           ├── fabric-gateway.service.ts  # Service discovery enabled
+│           ├── fabric-ca.service.ts       # Per-org CA, company attrs
+│           ├── wallet.service.ts          # Per-org encrypted storage
 │           └── chaincode-events.service.ts  # Event subscription
 ├── certs/                        # TLS certificates (generated)
 ├── docker-compose.yml            # All services + CouchDB
@@ -450,6 +497,7 @@ tracking/
 |----------|-------------|---------------|
 | `QueryDeliveriesByCustodian` | List user's deliveries (uses composite keys) | Any authenticated user |
 | `QueryDeliveriesByStatus` | List by status (uses composite keys) | Any authenticated user |
+| `QueryDeliveriesByCompany` | List company's deliveries (multi-tenant) | SELLER, ADMIN |
 | `GetDeliveryHistory` | Get blockchain history | Any participant |
 | `QueryDeliveriesRich` | CouchDB rich query (selector) | ADMIN only |
 | `QueryDeliveriesByDateRange` | Query by creation date range | Any authenticated user |
@@ -466,6 +514,49 @@ tracking/
 | `SetPricingData` | Store confidential pricing | SellersOrg only |
 | `GetPricingData` | Read confidential pricing | SellersOrg only |
 | `VerifyDeliveryPrivateDataHash` | Verify data hash | Any org |
+
+## Endorsement Policies
+
+### Chaincode-Level Policy (2-of-3)
+
+All transactions require endorsement from at least 2 of the 3 organizations:
+
+```
+OutOf(2, 'PlatformOrgMSP.member', 'SellersOrgMSP.member', 'LogisticsOrgMSP.member')
+```
+
+This prevents any single organization from unilaterally approving transactions.
+
+### State-Based Endorsement (Per-Delivery)
+
+Each delivery has a dynamic endorsement policy that follows its custody chain:
+
+| Custody State | Required Endorser |
+|--------------|-------------------|
+| Seller has package | SellersOrgMSP |
+| Driver has package | LogisticsOrgMSP |
+| Customer received | PlatformOrgMSP |
+
+When custody changes via `ConfirmHandoff`, the policy updates to require the new custodian's organization.
+
+### Multi-Tenant Company Support
+
+Users can belong to companies within their organization:
+
+```json
+{
+  "role": "SELLER",
+  "companyId": "acme-corp",
+  "companyName": "Acme Corporation"
+}
+```
+
+Certificate attributes embedded via Fabric CA:
+- `role` - User role (SELLER, DELIVERY_PERSON, etc.)
+- `companyId` - Company identifier for affiliation
+- `companyName` - Human-readable company name
+
+Sellers from the same company can view each other's deliveries via `QueryDeliveriesByCompany`.
 
 ## Make Commands
 
@@ -492,29 +583,36 @@ CHANNEL_NAME=deliverychannel
 CHAINCODE_NAME=delivery
 CHAINCODE_VERSION=1.0
 
-# MongoDB
-MONGO_HOST=mongodb
-MONGO_PORT=27017
-MONGO_DATABASE=delivery_tracking
+# Service Discovery
+DISCOVERY_AS_LOCALHOST=true
+
+# Per-Org Configuration (set by docker-compose per service)
+ORG_NAME=PlatformOrg  # or SellersOrg, LogisticsOrg
+
+# MongoDB (per-org)
+MONGO_URI_PLATFORM=mongodb://mongodb-platform:27017/delivery_tracking
+MONGO_URI_SELLERS=mongodb://mongodb-sellers:27018/delivery_tracking
+MONGO_URI_LOGISTICS=mongodb://mongodb-logistics:27019/delivery_tracking
 
 # JWT
 JWT_SECRET=<your-secret>
 JWT_EXPIRES_IN=24h
 
-# API
-API_PORT=3000
-
-# Wallet Encryption (REQUIRED - 32-char hex string)
-WALLET_ENCRYPTION_KEY=<32-character-hex-string>
+# Per-Org Wallet Encryption Keys (REQUIRED - 32-char hex string each)
+WALLET_ENCRYPTION_KEY_PLATFORM=<32-character-hex-string>
+WALLET_ENCRYPTION_KEY_SELLERS=<32-character-hex-string>
+WALLET_ENCRYPTION_KEY_LOGISTICS=<32-character-hex-string>
 # Generate with: openssl rand -hex 16
 ```
 
 ### Security Configuration
 
-The `WALLET_ENCRYPTION_KEY` is used to encrypt user private keys stored in MongoDB:
-- Uses AES-256-GCM encryption with PBKDF2 key derivation
-- Private keys are never stored in plaintext
-- Required for production deployments
+Each organization has its own wallet encryption key:
+- **PlatformOrg**: `WALLET_ENCRYPTION_KEY_PLATFORM` - encrypts customer/admin keys
+- **SellersOrg**: `WALLET_ENCRYPTION_KEY_SELLERS` - encrypts seller keys
+- **LogisticsOrg**: `WALLET_ENCRYPTION_KEY_LOGISTICS` - encrypts driver keys
+
+This ensures no single organization can access another organization's private keys.
 
 ## Troubleshooting
 

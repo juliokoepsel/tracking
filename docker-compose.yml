@@ -1,13 +1,13 @@
 ################################################################################
 #
-#   Multi-Org Delivery Tracking Network
+#   Multi-Org Delivery Tracking Network (Decentralized Architecture)
 #
 #   - 3 Orderers (Raft consensus)
 #   - 3 Peer Organizations: PlatformOrg, SellersOrg, LogisticsOrg
 #   - 3 Fabric CAs (one per org)
 #   - 3 CouchDB databases (one per peer for rich queries)
-#   - MongoDB for off-chain data
-#   - NestJS API
+#   - 3 MongoDB instances (one per org for wallet/user storage)
+#   - 3 NestJS API instances (one per org)
 #
 ################################################################################
 
@@ -24,7 +24,10 @@ volumes:
   couchdb.platform:
   couchdb.sellers:
   couchdb.logistics:
-  mongodb_data:
+  # Decentralized MongoDB volumes (one per org)
+  mongodb_platform_data:
+  mongodb_sellers_data:
+  mongodb_logistics_data:
 
 networks:
   delivery-network:
@@ -284,6 +287,8 @@ services:
       - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.platform.example.com:7051
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.platform.example.com:7051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
       - CORE_PEER_LOCALMSPID=PlatformOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9444
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
@@ -329,6 +334,8 @@ services:
       - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:8052
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.sellers.example.com:8051
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.sellers.example.com:8051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
       - CORE_PEER_LOCALMSPID=SellersOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9445
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
@@ -374,6 +381,8 @@ services:
       - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:9052
       - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.logistics.example.com:9051
       - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.logistics.example.com:9051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
       - CORE_PEER_LOCALMSPID=LogisticsOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9446
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
@@ -436,10 +445,12 @@ services:
       - delivery-network
 
   #=============================================================================
-  # MongoDB (with TLS)
+  # MongoDB Instances (Decentralized - One per Organization)
   #=============================================================================
-  mongodb:
-    container_name: delivery-mongodb
+  
+  # PlatformOrg MongoDB - Stores Platform users (Admins, Customers)
+  mongodb-platform:
+    container_name: mongodb-platform
     image: mongo:7
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
@@ -452,9 +463,65 @@ services:
       - --tlsCAFile=/etc/ssl/ca.pem
       - --tlsAllowConnectionsWithoutCertificates
     ports:
-      - "${MONGO_PORT}:27017"
+      - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
+      - mongodb_platform_data:/data/db
+      - ./certs/mongodb-combined.pem:/etc/ssl/mongodb-combined.pem:ro
+      - ./certs/ca.pem:/etc/ssl/ca.pem:ro
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--tls", "--tlsAllowInvalidCertificates", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # SellersOrg MongoDB - Stores Seller users
+  mongodb-sellers:
+    container_name: mongodb-sellers
+    image: mongo:7
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DB}
+    command:
+      - mongod
+      - --tlsMode=requireTLS
+      - --tlsCertificateKeyFile=/etc/ssl/mongodb-combined.pem
+      - --tlsCAFile=/etc/ssl/ca.pem
+      - --tlsAllowConnectionsWithoutCertificates
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_sellers_data:/data/db
+      - ./certs/mongodb-combined.pem:/etc/ssl/mongodb-combined.pem:ro
+      - ./certs/ca.pem:/etc/ssl/ca.pem:ro
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--tls", "--tlsAllowInvalidCertificates", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LogisticsOrg MongoDB - Stores Delivery Personnel users
+  mongodb-logistics:
+    container_name: mongodb-logistics
+    image: mongo:7
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DB}
+    command:
+      - mongod
+      - --tlsMode=requireTLS
+      - --tlsCertificateKeyFile=/etc/ssl/mongodb-combined.pem
+      - --tlsCAFile=/etc/ssl/ca.pem
+      - --tlsAllowConnectionsWithoutCertificates
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongodb_logistics_data:/data/db
       - ./certs/mongodb-combined.pem:/etc/ssl/mongodb-combined.pem:ro
       - ./certs/ca.pem:/etc/ssl/ca.pem:ro
     networks:
@@ -466,27 +533,33 @@ services:
       retries: 5
 
   #=============================================================================
-  # NestJS API (HTTPS)
+  # NestJS APIs (Decentralized - One per Organization)
   #=============================================================================
-  nestjs-api:
-    container_name: delivery-api
+  
+  # PlatformOrg API - Serves Admins and Customers
+  api-platform:
+    container_name: api-platform
     build:
       context: ./nestjs-api
       dockerfile: Dockerfile
     environment:
       - NODE_ENV=production
       - PORT=3000
-      # MongoDB (TLS)
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+      # Organization Configuration (Decentralized Mode)
+      - ORG_NAME=PlatformOrg
+      - ORG_MSP_ID=PlatformOrgMSP
+      # MongoDB (TLS) - Platform's database
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb-platform:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
       # Fabric Network
-      - FABRIC_CHANNEL_NAME=${CHANNEL_NAME}
-      - FABRIC_CHAINCODE_NAME=${CHAINCODE_NAME}
+      - CHANNEL_NAME=${CHANNEL_NAME}
+      - CHAINCODE_NAME=${CHAINCODE_NAME}
       - FABRIC_CRYPTO_PATH=/app/organizations
-      # Peer Endpoints
+      - DISCOVERY_AS_LOCALHOST=false
+      # Peer Endpoints (all peers needed for discovery)
       - PEER_PLATFORM_ENDPOINT=peer0.platform.example.com:7051
       - PEER_SELLERS_ENDPOINT=peer0.sellers.example.com:8051
       - PEER_LOGISTICS_ENDPOINT=peer0.logistics.example.com:9051
-      # CA Endpoints
+      # CA Endpoints (only Platform CA needed)
       - CA_PLATFORM_HOST=ca.platform.example.com
       - CA_PLATFORM_PORT=7054
       - CA_SELLERS_HOST=ca.sellers.example.com
@@ -496,26 +569,136 @@ services:
       # JWT
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=7d
+      # Wallet Encryption (Platform's key)
+      - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_PLATFORM}
       # SSL Certs
       - SSL_CERT_PATH=/app/certs/nestjs.pem
       - SSL_KEY_PATH=/app/certs/nestjs-key.pem
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - ./fabric-network/organizations:/app/organizations:ro
       - ./certs:/app/certs:ro
     depends_on:
-      mongodb:
+      mongodb-platform:
         condition: service_healthy
       peer0.platform.example.com:
         condition: service_started
-      peer0.sellers.example.com:
-        condition: service_started
-      peer0.logistics.example.com:
-        condition: service_started
       ca.platform.example.com:
         condition: service_started
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "-q", "https://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SellersOrg API - Serves Sellers
+  api-sellers:
+    container_name: api-sellers
+    build:
+      context: ./nestjs-api
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Organization Configuration (Decentralized Mode)
+      - ORG_NAME=SellersOrg
+      - ORG_MSP_ID=SellersOrgMSP
+      # MongoDB (TLS) - Sellers' database
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb-sellers:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+      # Fabric Network
+      - CHANNEL_NAME=${CHANNEL_NAME}
+      - CHAINCODE_NAME=${CHAINCODE_NAME}
+      - FABRIC_CRYPTO_PATH=/app/organizations
+      - DISCOVERY_AS_LOCALHOST=false
+      # Peer Endpoints (all peers needed for discovery)
+      - PEER_PLATFORM_ENDPOINT=peer0.platform.example.com:7051
+      - PEER_SELLERS_ENDPOINT=peer0.sellers.example.com:8051
+      - PEER_LOGISTICS_ENDPOINT=peer0.logistics.example.com:9051
+      # CA Endpoints (only Sellers CA needed)
+      - CA_PLATFORM_HOST=ca.platform.example.com
+      - CA_PLATFORM_PORT=7054
+      - CA_SELLERS_HOST=ca.sellers.example.com
+      - CA_SELLERS_PORT=7054
+      - CA_LOGISTICS_HOST=ca.logistics.example.com
+      - CA_LOGISTICS_PORT=7054
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      # Wallet Encryption (Sellers' key)
+      - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_SELLERS}
+      # SSL Certs
+      - SSL_CERT_PATH=/app/certs/nestjs.pem
+      - SSL_KEY_PATH=/app/certs/nestjs-key.pem
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./fabric-network/organizations:/app/organizations:ro
+      - ./certs:/app/certs:ro
+    depends_on:
+      mongodb-sellers:
+        condition: service_healthy
+      peer0.sellers.example.com:
+        condition: service_started
       ca.sellers.example.com:
+        condition: service_started
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "-q", "https://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LogisticsOrg API - Serves Delivery Personnel
+  api-logistics:
+    container_name: api-logistics
+    build:
+      context: ./nestjs-api
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Organization Configuration (Decentralized Mode)
+      - ORG_NAME=LogisticsOrg
+      - ORG_MSP_ID=LogisticsOrgMSP
+      # MongoDB (TLS) - Logistics' database
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb-logistics:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+      # Fabric Network
+      - CHANNEL_NAME=${CHANNEL_NAME}
+      - CHAINCODE_NAME=${CHAINCODE_NAME}
+      - FABRIC_CRYPTO_PATH=/app/organizations
+      - DISCOVERY_AS_LOCALHOST=false
+      # Peer Endpoints (all peers needed for discovery)
+      - PEER_PLATFORM_ENDPOINT=peer0.platform.example.com:7051
+      - PEER_SELLERS_ENDPOINT=peer0.sellers.example.com:8051
+      - PEER_LOGISTICS_ENDPOINT=peer0.logistics.example.com:9051
+      # CA Endpoints (only Logistics CA needed)
+      - CA_PLATFORM_HOST=ca.platform.example.com
+      - CA_PLATFORM_PORT=7054
+      - CA_SELLERS_HOST=ca.sellers.example.com
+      - CA_SELLERS_PORT=7054
+      - CA_LOGISTICS_HOST=ca.logistics.example.com
+      - CA_LOGISTICS_PORT=7054
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      # Wallet Encryption (Logistics' key)
+      - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_LOGISTICS}
+      # SSL Certs
+      - SSL_CERT_PATH=/app/certs/nestjs.pem
+      - SSL_KEY_PATH=/app/certs/nestjs-key.pem
+    ports:
+      - "3003:3000"
+    volumes:
+      - ./fabric-network/organizations:/app/organizations:ro
+      - ./certs:/app/certs:ro
+    depends_on:
+      mongodb-logistics:
+        condition: service_healthy
+      peer0.logistics.example.com:
         condition: service_started
       ca.logistics.example.com:
         condition: service_started

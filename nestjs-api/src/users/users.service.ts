@@ -54,17 +54,28 @@ export class UsersService {
     // Hash password
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
+    // Determine affiliation string
+    // For sellers/logistics with company: org.companyId
+    // For independents: org name
+    const org = RoleToOrgMap[createUserDto.role];
+    let affiliation = org || 'independent';
+    if (createUserDto.companyId && 
+        (createUserDto.role === UserRole.SELLER || createUserDto.role === UserRole.LOGISTICS_PROVIDER)) {
+      affiliation = `${org.toLowerCase()}.${createUserDto.companyId}`;
+    }
+
     // Create user in MongoDB
     const user = new this.userModel({
       ...createUserDto,
       hashedPassword,
       isActive: true,
       hasBlockchainIdentity: false,
+      affiliation,
     });
 
     await user.save();
 
-    this.logger.log(`Created user: ${user.username} (${user.role})`);
+    this.logger.log(`Created user: ${user.username} (${user.role})${createUserDto.companyId ? ` [${createUserDto.companyId}]` : ''}`);
 
     // Enroll with Fabric CA (async - don't block user creation)
     this.enrollUserWithFabricCA(user).catch((error) => {
@@ -87,8 +98,11 @@ export class UsersService {
       const userId = user._id.toString();
       const role = user.role as UserRole;
 
-      // Enroll with Fabric CA
-      const enrollment = await this.fabricCAService.enrollUser(userId, role);
+      // Enroll with Fabric CA, including company affiliation if provided
+      const enrollment = await this.fabricCAService.enrollUser(userId, role, {
+        companyId: user.companyId,
+        companyName: user.companyName,
+      });
 
       // Store in wallet
       const mspId = RoleToMSPMap[role];

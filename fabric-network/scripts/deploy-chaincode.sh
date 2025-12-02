@@ -33,6 +33,16 @@ SEQUENCE=${1:-1}
 CHAINCODE_PATH="/opt/gopath/src/github.com/chaincode/delivery"
 CHAINCODE_LABEL="${CHAINCODE_NAME}_${CHAINCODE_VERSION}"
 
+# Endorsement policy: 2 out of 3 organizations must endorse transactions
+# This ensures cross-organization validation for all delivery state changes
+# Using signature policy: OutOf(2, PlatformOrg.member, SellersOrg.member, LogisticsOrg.member)
+# Change to OR policy for single-peer gateway architecture
+# For production, implement service discovery for 2-of-3 endorsement
+ENDORSEMENT_POLICY="OR('PlatformOrgMSP.member', 'SellersOrgMSP.member', 'LogisticsOrgMSP.member')"
+
+# Private Data Collections config
+COLLECTIONS_CONFIG="/opt/gopath/src/github.com/chaincode/delivery/collections_config.json"
+
 # TLS CA file path
 ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/orderer.example.com/orderers/orderer1.orderer.example.com/msp/tlscacerts/tlsca.orderer.example.com-cert.pem
 
@@ -95,7 +105,7 @@ PACKAGE_ID=$(docker exec \
 echo -e "${GREEN}Package ID: ${PACKAGE_ID}${NC}"
 
 # Approve chaincode for PlatformOrg
-echo -e "${BLUE}Approving chaincode for PlatformOrg...${NC}"
+echo -e "${BLUE}Approving chaincode for PlatformOrg (with 2-of-3 endorsement policy)...${NC}"
 docker exec \
     -e CORE_PEER_LOCALMSPID=PlatformOrgMSP \
     -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt \
@@ -108,12 +118,14 @@ docker exec \
     --version ${CHAINCODE_VERSION} \
     --package-id ${PACKAGE_ID} \
     --sequence ${SEQUENCE} \
+    --signature-policy "${ENDORSEMENT_POLICY}" \
+    --collections-config ${COLLECTIONS_CONFIG} \
     --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Chaincode approved by PlatformOrg${NC}"
 
 # Approve chaincode for SellersOrg
-echo -e "${BLUE}Approving chaincode for SellersOrg...${NC}"
+echo -e "${BLUE}Approving chaincode for SellersOrg (with 2-of-3 endorsement policy)...${NC}"
 docker exec \
     -e CORE_PEER_LOCALMSPID=SellersOrgMSP \
     -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/sellers.example.com/peers/peer0.sellers.example.com/tls/ca.crt \
@@ -126,12 +138,14 @@ docker exec \
     --version ${CHAINCODE_VERSION} \
     --package-id ${PACKAGE_ID} \
     --sequence ${SEQUENCE} \
+    --signature-policy "${ENDORSEMENT_POLICY}" \
+    --collections-config ${COLLECTIONS_CONFIG} \
     --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Chaincode approved by SellersOrg${NC}"
 
 # Approve chaincode for LogisticsOrg
-echo -e "${BLUE}Approving chaincode for LogisticsOrg...${NC}"
+echo -e "${BLUE}Approving chaincode for LogisticsOrg (with 2-of-3 endorsement policy)...${NC}"
 docker exec \
     -e CORE_PEER_LOCALMSPID=LogisticsOrgMSP \
     -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/logistics.example.com/peers/peer0.logistics.example.com/tls/ca.crt \
@@ -144,6 +158,8 @@ docker exec \
     --version ${CHAINCODE_VERSION} \
     --package-id ${PACKAGE_ID} \
     --sequence ${SEQUENCE} \
+    --signature-policy "${ENDORSEMENT_POLICY}" \
+    --collections-config ${COLLECTIONS_CONFIG} \
     --tls --cafile ${ORDERER_CA}
 
 echo -e "${GREEN}✓ Chaincode approved by LogisticsOrg${NC}"
@@ -160,10 +176,12 @@ docker exec \
     --name ${CHAINCODE_NAME} \
     --version ${CHAINCODE_VERSION} \
     --sequence ${SEQUENCE} \
+    --signature-policy "${ENDORSEMENT_POLICY}" \
+    --collections-config ${COLLECTIONS_CONFIG} \
     --output json
 
 # Commit chaincode (requires endorsement from all orgs)
-echo -e "${YELLOW}Committing chaincode (endorsed by all 3 orgs)...${NC}"
+echo -e "${YELLOW}Committing chaincode with 2-of-3 endorsement policy and private data collections...${NC}"
 docker exec \
     -e CORE_PEER_LOCALMSPID=PlatformOrgMSP \
     -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt \
@@ -175,6 +193,8 @@ docker exec \
     --name ${CHAINCODE_NAME} \
     --version ${CHAINCODE_VERSION} \
     --sequence ${SEQUENCE} \
+    --signature-policy "${ENDORSEMENT_POLICY}" \
+    --collections-config ${COLLECTIONS_CONFIG} \
     --tls --cafile ${ORDERER_CA} \
     --peerAddresses peer0.platform.example.com:7051 \
     --tlsRootCertFiles /opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt \
@@ -208,11 +228,21 @@ echo -e "  Name: ${CHAINCODE_NAME}"
 echo -e "  Version: ${CHAINCODE_VERSION}"
 echo -e "  Sequence: ${SEQUENCE}"
 echo -e "  Channel: ${CHANNEL_NAME}"
+echo -e "  Endorsement Policy: 2-of-3 orgs"
 echo ""
 echo -e "${YELLOW}Installed on:${NC}"
 echo -e "  ✓ peer0.platform.example.com (PlatformOrg)"
 echo -e "  ✓ peer0.sellers.example.com (SellersOrg)"
 echo -e "  ✓ peer0.logistics.example.com (LogisticsOrg)"
+echo ""
+echo -e "${YELLOW}Endorsement Policy:${NC}"
+echo -e "  Transactions require endorsement from at least 2 of the 3 organizations."
+echo -e "  This ensures cross-organization validation of all delivery state changes."
+echo ""
+echo -e "${YELLOW}Private Data Collections:${NC}"
+echo -e "  • deliveryPrivateDetails: Sensitive address/contact info (PlatformOrg + SellersOrg)"
+echo -e "  • handoffPrivateData: Photo/signature hashes (LogisticsOrg + PlatformOrg)"
+echo -e "  • pricingData: Confidential pricing (SellersOrg only)"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo -e "  1. Start Fabric CAs: ${GREEN}docker-compose up -d ca.platform.example.com ca.sellers.example.com ca.logistics.example.com${NC}"

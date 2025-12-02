@@ -5,6 +5,7 @@
 #   - 3 Orderers (Raft consensus)
 #   - 3 Peer Organizations: PlatformOrg, SellersOrg, LogisticsOrg
 #   - 3 Fabric CAs (one per org)
+#   - 3 CouchDB databases (one per peer for rich queries)
 #   - MongoDB for off-chain data
 #   - NestJS API
 #
@@ -20,6 +21,9 @@ volumes:
   ca.platform.example.com:
   ca.sellers.example.com:
   ca.logistics.example.com:
+  couchdb.platform:
+  couchdb.sellers:
+  couchdb.logistics:
   mongodb_data:
 
 networks:
@@ -217,6 +221,48 @@ services:
       - delivery-network
 
   #=============================================================================
+  # CouchDB Databases (State Database for Rich Queries)
+  #=============================================================================
+  couchdb.platform:
+    container_name: couchdb.platform
+    image: couchdb:3.3
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    volumes:
+      - couchdb.platform:/opt/couchdb/data
+    ports:
+      - "5984:5984"
+    networks:
+      - delivery-network
+
+  couchdb.sellers:
+    container_name: couchdb.sellers
+    image: couchdb:3.3
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    volumes:
+      - couchdb.sellers:/opt/couchdb/data
+    ports:
+      - "6984:5984"
+    networks:
+      - delivery-network
+
+  couchdb.logistics:
+    container_name: couchdb.logistics
+    image: couchdb:3.3
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    volumes:
+      - couchdb.logistics:/opt/couchdb/data
+    ports:
+      - "7984:5984"
+    networks:
+      - delivery-network
+
+  #=============================================================================
   # Peer Nodes
   #=============================================================================
   peer0.platform.example.com:
@@ -241,6 +287,11 @@ services:
       - CORE_PEER_LOCALMSPID=PlatformOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9444
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      # CouchDB State Database Configuration
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb.platform:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
     volumes:
       - /var/run/docker.sock:/host/var/run/docker.sock
       - ./fabric-network/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/msp:/etc/hyperledger/fabric/msp
@@ -254,6 +305,7 @@ services:
     networks:
       - delivery-network
     depends_on:
+      - couchdb.platform
       - orderer1.orderer.example.com
       - orderer2.orderer.example.com
       - orderer3.orderer.example.com
@@ -280,6 +332,11 @@ services:
       - CORE_PEER_LOCALMSPID=SellersOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9445
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      # CouchDB State Database Configuration
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb.sellers:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
     volumes:
       - /var/run/docker.sock:/host/var/run/docker.sock
       - ./fabric-network/organizations/peerOrganizations/sellers.example.com/peers/peer0.sellers.example.com/msp:/etc/hyperledger/fabric/msp
@@ -293,6 +350,7 @@ services:
     networks:
       - delivery-network
     depends_on:
+      - couchdb.sellers
       - orderer1.orderer.example.com
       - orderer2.orderer.example.com
       - orderer3.orderer.example.com
@@ -319,6 +377,11 @@ services:
       - CORE_PEER_LOCALMSPID=LogisticsOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9446
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      # CouchDB State Database Configuration
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb.logistics:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
     volumes:
       - /var/run/docker.sock:/host/var/run/docker.sock
       - ./fabric-network/organizations/peerOrganizations/logistics.example.com/peers/peer0.logistics.example.com/msp:/etc/hyperledger/fabric/msp
@@ -332,6 +395,7 @@ services:
     networks:
       - delivery-network
     depends_on:
+      - couchdb.logistics
       - orderer1.orderer.example.com
       - orderer2.orderer.example.com
       - orderer3.orderer.example.com

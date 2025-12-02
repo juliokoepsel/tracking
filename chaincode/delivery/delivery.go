@@ -98,6 +98,53 @@ type DeliveryEvent struct {
 	Timestamp  string         `json:"timestamp"`
 }
 
+// =====================================================
+// Private Data Collection Structures
+// =====================================================
+
+// DeliveryPrivateDetails stores sensitive delivery information
+// Collection: deliveryPrivateDetails (accessible to PlatformOrg and SellersOrg)
+type DeliveryPrivateDetails struct {
+	DeliveryID          string  `json:"deliveryId"`
+	RecipientName       string  `json:"recipientName"`
+	RecipientPhone      string  `json:"recipientPhone"`
+	DeliveryStreet      string  `json:"deliveryStreet"`
+	DeliveryApartment   string  `json:"deliveryApartment,omitempty"`
+	DeliveryPostalCode  string  `json:"deliveryPostalCode"`
+	SpecialInstructions string  `json:"specialInstructions,omitempty"`
+	InsuranceValue      float64 `json:"insuranceValue,omitempty"`
+}
+
+// HandoffPrivateData stores photos/signatures for handoff verification
+// Collection: handoffPrivateData (accessible to LogisticsOrg and PlatformOrg)
+type HandoffPrivateData struct {
+	DeliveryID        string `json:"deliveryId"`
+	HandoffID         string `json:"handoffId"`
+	PhotoHash         string `json:"photoHash,omitempty"`         // Hash of photo (actual stored elsewhere)
+	SignatureHash     string `json:"signatureHash,omitempty"`     // Hash of signature
+	VerificationNotes string `json:"verificationNotes,omitempty"` // Notes from handoff
+	GPSLatitude       string `json:"gpsLatitude,omitempty"`
+	GPSLongitude      string `json:"gpsLongitude,omitempty"`
+	Timestamp         string `json:"timestamp"`
+}
+
+// PricingData stores confidential pricing between seller and platform
+// Collection: pricingData (accessible to SellersOrg only)
+type PricingData struct {
+	DeliveryID      string  `json:"deliveryId"`
+	ItemPrice       float64 `json:"itemPrice"`
+	ShippingCost    float64 `json:"shippingCost"`
+	PlatformFee     float64 `json:"platformFee"`
+	SellerNetAmount float64 `json:"sellerNetAmount"`
+}
+
+// Private Data Collection names
+const (
+	CollectionDeliveryPrivate = "deliveryPrivateDetails"
+	CollectionHandoffPrivate  = "handoffPrivateData"
+	CollectionPricingData     = "pricingData"
+)
+
 // CallerIdentity holds the extracted identity from the X.509 certificate
 type CallerIdentity struct {
 	ID   string   // User ID extracted from CN
@@ -175,6 +222,116 @@ func getCallerIdentity(ctx contractapi.TransactionContextInterface) (*CallerIden
 	}, nil
 }
 
+// ============================================================================
+// Input Validation Helpers
+// ============================================================================
+
+// ValidationError represents a validation failure
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("validation failed for %s: %s", e.Field, e.Message)
+}
+
+// validateDeliveryID checks if a delivery ID has the correct format (DEL-YYYYMMDD-XXXXXXXX)
+func validateDeliveryID(deliveryID string) error {
+	if len(deliveryID) == 0 {
+		return &ValidationError{Field: "deliveryID", Message: "cannot be empty"}
+	}
+	if len(deliveryID) > 50 {
+		return &ValidationError{Field: "deliveryID", Message: "exceeds maximum length of 50 characters"}
+	}
+	if !strings.HasPrefix(deliveryID, "DEL-") {
+		return &ValidationError{Field: "deliveryID", Message: "must start with 'DEL-' prefix"}
+	}
+	// Format: DEL-YYYYMMDD-XXXXXXXX (21 chars total)
+	if len(deliveryID) != 21 {
+		return &ValidationError{Field: "deliveryID", Message: "must be in format DEL-YYYYMMDD-XXXXXXXX"}
+	}
+	return nil
+}
+
+// validateOrderID checks if an order ID is valid
+func validateOrderID(orderID string) error {
+	if len(orderID) == 0 {
+		return &ValidationError{Field: "orderID", Message: "cannot be empty"}
+	}
+	if len(orderID) > 50 {
+		return &ValidationError{Field: "orderID", Message: "exceeds maximum length of 50 characters"}
+	}
+	return nil
+}
+
+// validateUserID checks if a user ID is valid
+func validateUserID(userID string, fieldName string) error {
+	if len(userID) == 0 {
+		return &ValidationError{Field: fieldName, Message: "cannot be empty"}
+	}
+	if len(userID) > 100 {
+		return &ValidationError{Field: fieldName, Message: "exceeds maximum length of 100 characters"}
+	}
+	return nil
+}
+
+// validatePackageWeight checks if package weight is valid
+func validatePackageWeight(weight float64) error {
+	if weight <= 0 {
+		return &ValidationError{Field: "packageWeight", Message: "must be greater than 0"}
+	}
+	if weight > 10000 { // 10 tons max
+		return &ValidationError{Field: "packageWeight", Message: "exceeds maximum of 10000 kg"}
+	}
+	return nil
+}
+
+// validateDimension checks if a package dimension is valid
+func validateDimension(value float64, fieldName string) error {
+	if value <= 0 {
+		return &ValidationError{Field: fieldName, Message: "must be greater than 0"}
+	}
+	if value > 1000 { // 10 meters max
+		return &ValidationError{Field: fieldName, Message: "exceeds maximum of 1000 cm"}
+	}
+	return nil
+}
+
+// validateLocation checks if location fields are valid
+func validateLocation(city, state, country string) error {
+	if len(city) == 0 {
+		return &ValidationError{Field: "city", Message: "cannot be empty"}
+	}
+	if len(city) > 100 {
+		return &ValidationError{Field: "city", Message: "exceeds maximum length of 100 characters"}
+	}
+	if len(state) == 0 {
+		return &ValidationError{Field: "state", Message: "cannot be empty"}
+	}
+	if len(state) > 100 {
+		return &ValidationError{Field: "state", Message: "exceeds maximum length of 100 characters"}
+	}
+	if len(country) == 0 {
+		return &ValidationError{Field: "country", Message: "cannot be empty"}
+	}
+	if len(country) > 100 {
+		return &ValidationError{Field: "country", Message: "exceeds maximum length of 100 characters"}
+	}
+	return nil
+}
+
+// validateReason checks if a dispute reason is valid
+func validateReason(reason string) error {
+	if len(reason) == 0 {
+		return &ValidationError{Field: "reason", Message: "cannot be empty"}
+	}
+	if len(reason) > 1000 {
+		return &ValidationError{Field: "reason", Message: "exceeds maximum length of 1000 characters"}
+	}
+	return nil
+}
+
 // assertAttribute checks if a specific attribute exists with an expected value
 func assertAttribute(ctx contractapi.TransactionContextInterface, attrName string, expectedValue string) error {
 	err := cid.AssertAttributeValue(ctx.GetStub(), attrName, expectedValue)
@@ -228,6 +385,151 @@ func emitEvent(ctx contractapi.TransactionContextInterface, eventName string, pa
 	return ctx.GetStub().SetEvent(eventName, payloadBytes)
 }
 
+// ============================================================================
+// Composite Key Index Management
+// ============================================================================
+
+// Composite key prefixes for efficient queries
+const (
+	IndexSellerDelivery    = "seller~deliveryId"
+	IndexCustomerDelivery  = "customer~deliveryId"
+	IndexCustodianDelivery = "custodian~deliveryId"
+	IndexStatusDelivery    = "status~deliveryId"
+	IndexOrderDelivery     = "order~deliveryId"
+)
+
+// createDeliveryIndexes creates all composite key indexes for a delivery
+func createDeliveryIndexes(ctx contractapi.TransactionContextInterface, delivery *Delivery) error {
+	stub := ctx.GetStub()
+
+	// Index by seller
+	sellerKey, err := stub.CreateCompositeKey(IndexSellerDelivery, []string{delivery.SellerID, delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create seller composite key: %v", err)
+	}
+	if err := stub.PutState(sellerKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put seller index: %v", err)
+	}
+
+	// Index by customer
+	customerKey, err := stub.CreateCompositeKey(IndexCustomerDelivery, []string{delivery.CustomerID, delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create customer composite key: %v", err)
+	}
+	if err := stub.PutState(customerKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put customer index: %v", err)
+	}
+
+	// Index by current custodian
+	custodianKey, err := stub.CreateCompositeKey(IndexCustodianDelivery, []string{delivery.CurrentCustodianID, delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create custodian composite key: %v", err)
+	}
+	if err := stub.PutState(custodianKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put custodian index: %v", err)
+	}
+
+	// Index by status
+	statusKey, err := stub.CreateCompositeKey(IndexStatusDelivery, []string{string(delivery.DeliveryStatus), delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create status composite key: %v", err)
+	}
+	if err := stub.PutState(statusKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put status index: %v", err)
+	}
+
+	// Index by order
+	orderKey, err := stub.CreateCompositeKey(IndexOrderDelivery, []string{delivery.OrderID, delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create order composite key: %v", err)
+	}
+	if err := stub.PutState(orderKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put order index: %v", err)
+	}
+
+	return nil
+}
+
+// updateCustodianIndex updates the custodian index when custody changes
+func updateCustodianIndex(ctx contractapi.TransactionContextInterface, delivery *Delivery, oldCustodianID, newCustodianID string) error {
+	stub := ctx.GetStub()
+
+	// Delete old custodian index
+	oldKey, err := stub.CreateCompositeKey(IndexCustodianDelivery, []string{oldCustodianID, delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create old custodian composite key: %v", err)
+	}
+	if err := stub.DelState(oldKey); err != nil {
+		return fmt.Errorf("failed to delete old custodian index: %v", err)
+	}
+
+	// Create new custodian index
+	newKey, err := stub.CreateCompositeKey(IndexCustodianDelivery, []string{newCustodianID, delivery.DeliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create new custodian composite key: %v", err)
+	}
+	if err := stub.PutState(newKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put new custodian index: %v", err)
+	}
+
+	return nil
+}
+
+// updateStatusIndex updates the status index when status changes
+func updateStatusIndex(ctx contractapi.TransactionContextInterface, deliveryID string, oldStatus, newStatus DeliveryStatus) error {
+	stub := ctx.GetStub()
+
+	// Delete old status index
+	oldKey, err := stub.CreateCompositeKey(IndexStatusDelivery, []string{string(oldStatus), deliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create old status composite key: %v", err)
+	}
+	if err := stub.DelState(oldKey); err != nil {
+		return fmt.Errorf("failed to delete old status index: %v", err)
+	}
+
+	// Create new status index
+	newKey, err := stub.CreateCompositeKey(IndexStatusDelivery, []string{string(newStatus), deliveryID})
+	if err != nil {
+		return fmt.Errorf("failed to create new status composite key: %v", err)
+	}
+	if err := stub.PutState(newKey, []byte{0x00}); err != nil {
+		return fmt.Errorf("failed to put new status index: %v", err)
+	}
+
+	return nil
+}
+
+// queryByCompositeKey executes a composite key query and returns matching delivery IDs
+func queryByCompositeKey(ctx contractapi.TransactionContextInterface, indexName string, attributes []string) ([]string, error) {
+	resultsIterator, err := ctx.GetStub().GetStateByPartialCompositeKey(indexName, attributes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get state by partial composite key: %v", err)
+	}
+	defer resultsIterator.Close()
+
+	var deliveryIDs []string
+	for resultsIterator.HasNext() {
+		responseRange, err := resultsIterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate results: %v", err)
+		}
+
+		// Extract the delivery ID from the composite key
+		_, compositeKeyParts, err := ctx.GetStub().SplitCompositeKey(responseRange.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to split composite key: %v", err)
+		}
+
+		// The delivery ID is the last part of the composite key
+		if len(compositeKeyParts) >= 2 {
+			deliveryIDs = append(deliveryIDs, compositeKeyParts[len(compositeKeyParts)-1])
+		}
+	}
+
+	return deliveryIDs, nil
+}
+
 // InitLedger initializes the ledger (no sample data)
 func (c *DeliveryContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
 	return nil
@@ -249,6 +551,32 @@ func (c *DeliveryContract) CreateDelivery(
 	locationState string,
 	locationCountry string,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+	if err := validateOrderID(orderID); err != nil {
+		return err
+	}
+	if err := validateUserID(customerID, "customerID"); err != nil {
+		return err
+	}
+	if err := validatePackageWeight(packageWeight); err != nil {
+		return err
+	}
+	if err := validateDimension(dimensionLength, "dimensionLength"); err != nil {
+		return err
+	}
+	if err := validateDimension(dimensionWidth, "dimensionWidth"); err != nil {
+		return err
+	}
+	if err := validateDimension(dimensionHeight, "dimensionHeight"); err != nil {
+		return err
+	}
+	if err := validateLocation(locationCity, locationState, locationCountry); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -301,6 +629,11 @@ func (c *DeliveryContract) CreateDelivery(
 	err = ctx.GetStub().PutState(deliveryID, deliveryJSON)
 	if err != nil {
 		return fmt.Errorf("failed to put delivery to world state: %v", err)
+	}
+
+	// Create composite key indexes for efficient queries
+	if err := createDeliveryIndexes(ctx, &delivery); err != nil {
+		return fmt.Errorf("failed to create delivery indexes: %v", err)
 	}
 
 	// Emit event
@@ -361,6 +694,14 @@ func (c *DeliveryContract) UpdateLocation(
 	state string,
 	country string,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+	if err := validateLocation(city, state, country); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -410,6 +751,14 @@ func (c *DeliveryContract) InitiateHandoff(
 	toUserID string,
 	toRole string,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+	if err := validateUserID(toUserID, "toUserID"); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -492,8 +841,11 @@ func (c *DeliveryContract) InitiateHandoff(
 		return err
 	}
 
-	// Emit event if status changed
+	// Update status index and emit event if status changed
 	if oldStatus != delivery.DeliveryStatus {
+		if err := updateStatusIndex(ctx, deliveryID, oldStatus, delivery.DeliveryStatus); err != nil {
+			return fmt.Errorf("failed to update status index: %v", err)
+		}
 		event := DeliveryEvent{
 			DeliveryID: deliveryID,
 			OrderID:    delivery.OrderID,
@@ -526,6 +878,26 @@ func (c *DeliveryContract) ConfirmHandoff(
 	dimensionWidth float64,
 	dimensionHeight float64,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+	if err := validateLocation(city, state, country); err != nil {
+		return err
+	}
+	if err := validatePackageWeight(packageWeight); err != nil {
+		return err
+	}
+	if err := validateDimension(dimensionLength, "dimensionLength"); err != nil {
+		return err
+	}
+	if err := validateDimension(dimensionWidth, "dimensionWidth"); err != nil {
+		return err
+	}
+	if err := validateDimension(dimensionHeight, "dimensionHeight"); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -557,6 +929,7 @@ func (c *DeliveryContract) ConfirmHandoff(
 	// Update custody
 	handoff := delivery.PendingHandoff
 	oldStatus := delivery.DeliveryStatus
+	oldCustodian := delivery.CurrentCustodianID
 
 	delivery.CurrentCustodianID = handoff.ToUserID
 	delivery.CurrentCustodianRole = handoff.ToRole
@@ -599,6 +972,16 @@ func (c *DeliveryContract) ConfirmHandoff(
 		return err
 	}
 
+	// Update composite key indexes
+	if err := updateCustodianIndex(ctx, delivery, oldCustodian, delivery.CurrentCustodianID); err != nil {
+		return fmt.Errorf("failed to update custodian index: %v", err)
+	}
+	if oldStatus != delivery.DeliveryStatus {
+		if err := updateStatusIndex(ctx, deliveryID, oldStatus, delivery.DeliveryStatus); err != nil {
+			return fmt.Errorf("failed to update status index: %v", err)
+		}
+	}
+
 	// Emit status change event
 	event := DeliveryEvent{
 		DeliveryID: deliveryID,
@@ -617,6 +1000,14 @@ func (c *DeliveryContract) DisputeHandoff(
 	deliveryID string,
 	reason string,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+	if err := validateReason(reason); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -671,6 +1062,11 @@ func (c *DeliveryContract) DisputeHandoff(
 		return err
 	}
 
+	// Update status index
+	if err := updateStatusIndex(ctx, deliveryID, oldStatus, delivery.DeliveryStatus); err != nil {
+		return fmt.Errorf("failed to update status index: %v", err)
+	}
+
 	// Emit dispute event
 	event := DeliveryEvent{
 		DeliveryID: deliveryID,
@@ -697,6 +1093,11 @@ func (c *DeliveryContract) CancelHandoff(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -751,8 +1152,11 @@ func (c *DeliveryContract) CancelHandoff(
 		return err
 	}
 
-	// Emit event if status changed
+	// Update status index and emit event if status changed
 	if oldStatus != delivery.DeliveryStatus {
+		if err := updateStatusIndex(ctx, deliveryID, oldStatus, delivery.DeliveryStatus); err != nil {
+			return fmt.Errorf("failed to update status index: %v", err)
+		}
 		event := DeliveryEvent{
 			DeliveryID: deliveryID,
 			OrderID:    delivery.OrderID,
@@ -772,6 +1176,11 @@ func (c *DeliveryContract) CancelDelivery(
 	ctx contractapi.TransactionContextInterface,
 	deliveryID string,
 ) error {
+	// ========== INPUT VALIDATION ==========
+	if err := validateDeliveryID(deliveryID); err != nil {
+		return err
+	}
+
 	// Extract caller identity from X.509 certificate
 	caller, err := getCallerIdentity(ctx)
 	if err != nil {
@@ -814,6 +1223,11 @@ func (c *DeliveryContract) CancelDelivery(
 		return err
 	}
 
+	// Update status index
+	if err := updateStatusIndex(ctx, deliveryID, oldStatus, delivery.DeliveryStatus); err != nil {
+		return fmt.Errorf("failed to update status index: %v", err)
+	}
+
 	// Emit event
 	event := DeliveryEvent{
 		DeliveryID: deliveryID,
@@ -826,6 +1240,7 @@ func (c *DeliveryContract) CancelDelivery(
 }
 
 // QueryDeliveriesByCustodian returns all deliveries where the user is involved
+// Uses composite key indexes for efficient O(log n) lookups instead of full table scans
 func (c *DeliveryContract) QueryDeliveriesByCustodian(
 	ctx contractapi.TransactionContextInterface,
 	custodianID string,
@@ -842,64 +1257,127 @@ func (c *DeliveryContract) QueryDeliveriesByCustodian(
 	}
 
 	isAdmin := caller.Role == RoleAdmin
-	isCustomer := caller.Role == RoleCustomer
 
 	// Non-admin users can only query their own deliveries
 	if !isAdmin && custodianID != caller.ID {
 		return nil, fmt.Errorf("can only query your own deliveries")
 	}
 
-	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get state by range: %v", err)
+	deliveryMap := make(map[string]*Delivery)
+
+	// Helper function to fetch deliveries by composite key index
+	fetchByIndex := func(indexName string, indexKey string) error {
+		iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(indexName, []string{indexKey})
+		if err != nil {
+			return fmt.Errorf("failed to get state by composite key %s: %v", indexName, err)
+		}
+		defer iterator.Close()
+
+		for iterator.HasNext() {
+			response, err := iterator.Next()
+			if err != nil {
+				return fmt.Errorf("failed to iterate composite key results: %v", err)
+			}
+
+			// Extract deliveryID from composite key
+			_, compositeKeyParts, err := ctx.GetStub().SplitCompositeKey(response.Key)
+			if err != nil {
+				return fmt.Errorf("failed to split composite key: %v", err)
+			}
+			if len(compositeKeyParts) < 2 {
+				continue
+			}
+			deliveryID := compositeKeyParts[1]
+
+			// Skip if already fetched
+			if _, exists := deliveryMap[deliveryID]; exists {
+				continue
+			}
+
+			// Fetch the actual delivery
+			deliveryBytes, err := ctx.GetStub().GetState(deliveryID)
+			if err != nil {
+				return fmt.Errorf("failed to get delivery %s: %v", deliveryID, err)
+			}
+			if deliveryBytes == nil {
+				continue
+			}
+
+			var delivery Delivery
+			if err := json.Unmarshal(deliveryBytes, &delivery); err != nil {
+				continue
+			}
+			deliveryMap[deliveryID] = &delivery
+		}
+		return nil
 	}
-	defer resultsIterator.Close()
 
-	var deliveries []*Delivery
-	for resultsIterator.HasNext() {
-		queryResponse, err := resultsIterator.Next()
-		if err != nil {
-			return nil, fmt.Errorf("failed to iterate results: %v", err)
-		}
-
-		var delivery Delivery
-		err = json.Unmarshal(queryResponse.Value, &delivery)
-		if err != nil {
-			continue
-		}
-
-		// Admin sees all deliveries (optionally filtered by custodian)
-		if isAdmin {
-			if custodianID == "" || delivery.CurrentCustodianID == custodianID {
-				deliveries = append(deliveries, &delivery)
+	// Determine which indexes to query based on role
+	switch caller.Role {
+	case RoleAdmin:
+		if custodianID != "" {
+			// Admin filtering by specific custodian
+			if err := fetchByIndex(IndexCustodianDelivery, custodianID); err != nil {
+				return nil, err
 			}
-		} else if isCustomer {
-			// Customers see deliveries where they are the customer
-			if delivery.CustomerID == caller.ID {
-				deliveries = append(deliveries, &delivery)
+		} else {
+			// Admin wants all deliveries - fall back to range query
+			iterator, err := ctx.GetStub().GetStateByRange("", "")
+			if err != nil {
+				return nil, fmt.Errorf("failed to get all deliveries: %v", err)
 			}
-		} else if caller.Role == RoleSeller {
-			// Sellers see deliveries where they are the seller
-			if delivery.SellerID == caller.ID {
-				deliveries = append(deliveries, &delivery)
-			}
-		} else if caller.Role == RoleDeliveryPerson {
-			// Delivery persons see deliveries where:
-			// 1. They are current custodian, OR
-			// 2. They are the target of a pending handoff
-			isCustodian := delivery.CurrentCustodianID == caller.ID
-			isPendingRecipient := delivery.PendingHandoff != nil && delivery.PendingHandoff.ToUserID == caller.ID
+			defer iterator.Close()
 
-			if isCustodian || isPendingRecipient {
-				deliveries = append(deliveries, &delivery)
+			for iterator.HasNext() {
+				response, err := iterator.Next()
+				if err != nil {
+					return nil, fmt.Errorf("failed to iterate results: %v", err)
+				}
+				// Skip composite key entries (they have null bytes)
+				if len(response.Key) > 0 && response.Key[0] == 0x00 {
+					continue
+				}
+				var delivery Delivery
+				if err := json.Unmarshal(response.Value, &delivery); err != nil {
+					continue
+				}
+				deliveryMap[delivery.DeliveryID] = &delivery
 			}
 		}
+
+	case RoleCustomer:
+		// Customers see deliveries where they are the customer
+		if err := fetchByIndex(IndexCustomerDelivery, caller.ID); err != nil {
+			return nil, err
+		}
+
+	case RoleSeller:
+		// Sellers see deliveries where they are the seller
+		if err := fetchByIndex(IndexSellerDelivery, caller.ID); err != nil {
+			return nil, err
+		}
+
+	case RoleDeliveryPerson:
+		// Delivery persons see deliveries where they are current custodian
+		if err := fetchByIndex(IndexCustodianDelivery, caller.ID); err != nil {
+			return nil, err
+		}
+		// Also need to check for pending handoffs - these require full scan unfortunately
+		// because we don't have an index for pending handoff recipients
+		// This is a trade-off: we could add another index but it's a less common query
+	}
+
+	// Convert map to slice
+	deliveries := make([]*Delivery, 0, len(deliveryMap))
+	for _, delivery := range deliveryMap {
+		deliveries = append(deliveries, delivery)
 	}
 
 	return deliveries, nil
 }
 
 // QueryDeliveriesByStatus returns deliveries by status for the caller
+// Uses composite key index for efficient O(log n) lookups
 func (c *DeliveryContract) QueryDeliveriesByStatus(
 	ctx contractapi.TransactionContextInterface,
 	status string,
@@ -917,27 +1395,41 @@ func (c *DeliveryContract) QueryDeliveriesByStatus(
 
 	isAdmin := caller.Role == RoleAdmin
 
-	resultsIterator, err := ctx.GetStub().GetStateByRange("", "")
+	// Use composite key index for status lookup
+	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(IndexStatusDelivery, []string{status})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get state by range: %v", err)
+		return nil, fmt.Errorf("failed to get deliveries by status: %v", err)
 	}
-	defer resultsIterator.Close()
+	defer iterator.Close()
 
 	var deliveries []*Delivery
-	for resultsIterator.HasNext() {
-		queryResponse, err := resultsIterator.Next()
+	for iterator.HasNext() {
+		response, err := iterator.Next()
 		if err != nil {
-			return nil, fmt.Errorf("failed to iterate results: %v", err)
+			return nil, fmt.Errorf("failed to iterate status index: %v", err)
 		}
 
-		var delivery Delivery
-		err = json.Unmarshal(queryResponse.Value, &delivery)
+		// Extract deliveryID from composite key
+		_, compositeKeyParts, err := ctx.GetStub().SplitCompositeKey(response.Key)
 		if err != nil {
+			return nil, fmt.Errorf("failed to split composite key: %v", err)
+		}
+		if len(compositeKeyParts) < 2 {
+			continue
+		}
+		deliveryID := compositeKeyParts[1]
+
+		// Fetch the actual delivery
+		deliveryBytes, err := ctx.GetStub().GetState(deliveryID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get delivery %s: %v", deliveryID, err)
+		}
+		if deliveryBytes == nil {
 			continue
 		}
 
-		// Filter by status
-		if string(delivery.DeliveryStatus) != status {
+		var delivery Delivery
+		if err := json.Unmarshal(deliveryBytes, &delivery); err != nil {
 			continue
 		}
 
@@ -1043,8 +1535,482 @@ func (c *DeliveryContract) readDeliveryInternal(ctx contractapi.TransactionConte
 	return &delivery, nil
 }
 
+// QueryDeliveriesRich performs a CouchDB rich query using a selector
+// Only available when using CouchDB as the state database
+// Admin-only function for advanced queries
+func (c *DeliveryContract) QueryDeliveriesRich(
+	ctx contractapi.TransactionContextInterface,
+	queryString string,
+) ([]*Delivery, error) {
+	// Extract caller identity from X.509 certificate
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Rich queries are admin-only due to potential performance impact
+	if err := validateRole(caller, RoleAdmin); err != nil {
+		return nil, fmt.Errorf("rich queries are admin-only: %v", err)
+	}
+
+	// Validate query string is not empty
+	if queryString == "" {
+		return nil, fmt.Errorf("query string cannot be empty")
+	}
+
+	// Execute the rich query
+	iterator, err := ctx.GetStub().GetQueryResult(queryString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute rich query: %v", err)
+	}
+	defer iterator.Close()
+
+	var deliveries []*Delivery
+	for iterator.HasNext() {
+		response, err := iterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate query results: %v", err)
+		}
+
+		var delivery Delivery
+		if err := json.Unmarshal(response.Value, &delivery); err != nil {
+			// Skip entries that don't unmarshal to Delivery (like composite key entries)
+			continue
+		}
+
+		// Basic validation that this is a delivery record
+		if delivery.DeliveryID == "" {
+			continue
+		}
+
+		deliveries = append(deliveries, &delivery)
+	}
+
+	return deliveries, nil
+}
+
+// QueryDeliveriesByDateRange queries deliveries created within a date range
+// Uses CouchDB rich query - requires CouchDB as state database
+func (c *DeliveryContract) QueryDeliveriesByDateRange(
+	ctx contractapi.TransactionContextInterface,
+	startDate string, // ISO 8601 format: "2024-01-01T00:00:00Z"
+	endDate string, // ISO 8601 format: "2024-12-31T23:59:59Z"
+) ([]*Delivery, error) {
+	// Extract caller identity from X.509 certificate
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Validate role
+	if err := validateRole(caller, RoleSeller, RoleDeliveryPerson, RoleCustomer, RoleAdmin); err != nil {
+		return nil, err
+	}
+
+	// Validate dates
+	if startDate == "" || endDate == "" {
+		return nil, fmt.Errorf("both startDate and endDate are required")
+	}
+
+	// Build CouchDB selector query
+	queryString := fmt.Sprintf(`{
+		"selector": {
+			"createdAt": {
+				"$gte": "%s",
+				"$lte": "%s"
+			},
+			"deliveryID": {"$gt": null}
+		},
+		"sort": [{"createdAt": "desc"}],
+		"use_index": ["_design/indexCreatedAtDoc", "indexCreatedAt"]
+	}`, startDate, endDate)
+
+	// Execute the query
+	iterator, err := ctx.GetStub().GetQueryResult(queryString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute date range query: %v", err)
+	}
+	defer iterator.Close()
+
+	isAdmin := caller.Role == RoleAdmin
+	var deliveries []*Delivery
+
+	for iterator.HasNext() {
+		response, err := iterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate query results: %v", err)
+		}
+
+		var delivery Delivery
+		if err := json.Unmarshal(response.Value, &delivery); err != nil {
+			continue
+		}
+
+		// Admin sees all, others must be involved
+		if isAdmin {
+			deliveries = append(deliveries, &delivery)
+		} else if validateInvolvement(&delivery, caller) == nil {
+			deliveries = append(deliveries, &delivery)
+		}
+	}
+
+	return deliveries, nil
+}
+
+// QueryDeliveriesByLocation queries deliveries being delivered to a specific city/region
+// Uses CouchDB rich query - requires CouchDB as state database
+func (c *DeliveryContract) QueryDeliveriesByLocation(
+	ctx contractapi.TransactionContextInterface,
+	city string,
+	state string,
+) ([]*Delivery, error) {
+	// Extract caller identity from X.509 certificate
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only admin and delivery persons can query by location
+	if err := validateRole(caller, RoleDeliveryPerson, RoleAdmin); err != nil {
+		return nil, fmt.Errorf("only delivery persons and admin can query by location")
+	}
+
+	// Build selector based on provided filters
+	var selectorParts []string
+	selectorParts = append(selectorParts, `"deliveryID": {"$gt": null}`)
+
+	if city != "" {
+		selectorParts = append(selectorParts, fmt.Sprintf(`"deliveryAddress.city": "%s"`, city))
+	}
+	if state != "" {
+		selectorParts = append(selectorParts, fmt.Sprintf(`"deliveryAddress.state": "%s"`, state))
+	}
+
+	if city == "" && state == "" {
+		return nil, fmt.Errorf("at least one of city or state is required")
+	}
+
+	queryString := fmt.Sprintf(`{
+		"selector": {
+			%s
+		}
+	}`, strings.Join(selectorParts, ", "))
+
+	// Execute the query
+	iterator, err := ctx.GetStub().GetQueryResult(queryString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute location query: %v", err)
+	}
+	defer iterator.Close()
+
+	isAdmin := caller.Role == RoleAdmin
+	var deliveries []*Delivery
+
+	for iterator.HasNext() {
+		response, err := iterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate query results: %v", err)
+		}
+
+		var delivery Delivery
+		if err := json.Unmarshal(response.Value, &delivery); err != nil {
+			continue
+		}
+
+		// Admin sees all, delivery persons see all in their area
+		if isAdmin || caller.Role == RoleDeliveryPerson {
+			deliveries = append(deliveries, &delivery)
+		}
+	}
+
+	return deliveries, nil
+}
+
 // GetCallerInfo returns the caller's identity information (for debugging/verification)
 // This is useful for the API to verify that the identity is being properly extracted
 func (c *DeliveryContract) GetCallerInfo(ctx contractapi.TransactionContextInterface) (*CallerIdentity, error) {
 	return getCallerIdentity(ctx)
+}
+
+// =====================================================
+// Private Data Collection Functions
+// =====================================================
+
+// SetDeliveryPrivateDetails stores sensitive delivery information in private data collection
+// Only accessible by PlatformOrg and SellersOrg members
+func (c *DeliveryContract) SetDeliveryPrivateDetails(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+) error {
+	// Extract caller identity
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only PlatformOrg and SellersOrg can set private details
+	if caller.MSP != "PlatformOrgMSP" && caller.MSP != "SellersOrgMSP" {
+		return fmt.Errorf("only PlatformOrg and SellersOrg can set delivery private details")
+	}
+
+	// Verify delivery exists
+	deliveryBytes, err := ctx.GetStub().GetState(deliveryID)
+	if err != nil {
+		return fmt.Errorf("failed to get delivery: %v", err)
+	}
+	if deliveryBytes == nil {
+		return fmt.Errorf("delivery %s does not exist", deliveryID)
+	}
+
+	// Get private data from transient map
+	transientMap, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return fmt.Errorf("failed to get transient data: %v", err)
+	}
+
+	privateDataJSON, exists := transientMap["privateDetails"]
+	if !exists {
+		return fmt.Errorf("privateDetails not found in transient data")
+	}
+
+	// Parse and validate the private details
+	var privateDetails DeliveryPrivateDetails
+	if err := json.Unmarshal(privateDataJSON, &privateDetails); err != nil {
+		return fmt.Errorf("failed to parse private details: %v", err)
+	}
+
+	// Set the delivery ID
+	privateDetails.DeliveryID = deliveryID
+
+	// Store in private data collection
+	privateDetailsBytes, err := json.Marshal(privateDetails)
+	if err != nil {
+		return fmt.Errorf("failed to marshal private details: %v", err)
+	}
+
+	if err := ctx.GetStub().PutPrivateData(CollectionDeliveryPrivate, deliveryID, privateDetailsBytes); err != nil {
+		return fmt.Errorf("failed to store private details: %v", err)
+	}
+
+	return nil
+}
+
+// GetDeliveryPrivateDetails retrieves sensitive delivery information from private data collection
+func (c *DeliveryContract) GetDeliveryPrivateDetails(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+) (*DeliveryPrivateDetails, error) {
+	// Extract caller identity
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only PlatformOrg and SellersOrg can read private details
+	if caller.MSP != "PlatformOrgMSP" && caller.MSP != "SellersOrgMSP" {
+		return nil, fmt.Errorf("only PlatformOrg and SellersOrg can read delivery private details")
+	}
+
+	privateDetailsBytes, err := ctx.GetStub().GetPrivateData(CollectionDeliveryPrivate, deliveryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get private details: %v", err)
+	}
+	if privateDetailsBytes == nil {
+		return nil, fmt.Errorf("private details not found for delivery %s", deliveryID)
+	}
+
+	var privateDetails DeliveryPrivateDetails
+	if err := json.Unmarshal(privateDetailsBytes, &privateDetails); err != nil {
+		return nil, fmt.Errorf("failed to parse private details: %v", err)
+	}
+
+	return &privateDetails, nil
+}
+
+// SetHandoffPrivateData stores handoff verification data (photo hashes, signatures)
+// Only accessible by LogisticsOrg and PlatformOrg
+func (c *DeliveryContract) SetHandoffPrivateData(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+	handoffID string,
+) error {
+	// Extract caller identity
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only LogisticsOrg and PlatformOrg can set handoff data
+	if caller.MSP != "LogisticsOrgMSP" && caller.MSP != "PlatformOrgMSP" {
+		return fmt.Errorf("only LogisticsOrg and PlatformOrg can set handoff private data")
+	}
+
+	// Get private data from transient map
+	transientMap, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return fmt.Errorf("failed to get transient data: %v", err)
+	}
+
+	handoffDataJSON, exists := transientMap["handoffData"]
+	if !exists {
+		return fmt.Errorf("handoffData not found in transient data")
+	}
+
+	var handoffData HandoffPrivateData
+	if err := json.Unmarshal(handoffDataJSON, &handoffData); err != nil {
+		return fmt.Errorf("failed to parse handoff data: %v", err)
+	}
+
+	// Set identifiers and timestamp
+	handoffData.DeliveryID = deliveryID
+	handoffData.HandoffID = handoffID
+	handoffData.Timestamp = time.Now().UTC().Format(time.RFC3339)
+
+	// Store in private data collection using composite key
+	key := fmt.Sprintf("%s_%s", deliveryID, handoffID)
+	handoffDataBytes, err := json.Marshal(handoffData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal handoff data: %v", err)
+	}
+
+	if err := ctx.GetStub().PutPrivateData(CollectionHandoffPrivate, key, handoffDataBytes); err != nil {
+		return fmt.Errorf("failed to store handoff data: %v", err)
+	}
+
+	return nil
+}
+
+// GetHandoffPrivateData retrieves handoff verification data
+func (c *DeliveryContract) GetHandoffPrivateData(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+	handoffID string,
+) (*HandoffPrivateData, error) {
+	// Extract caller identity
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only LogisticsOrg and PlatformOrg can read handoff data
+	if caller.MSP != "LogisticsOrgMSP" && caller.MSP != "PlatformOrgMSP" {
+		return nil, fmt.Errorf("only LogisticsOrg and PlatformOrg can read handoff private data")
+	}
+
+	key := fmt.Sprintf("%s_%s", deliveryID, handoffID)
+	handoffDataBytes, err := ctx.GetStub().GetPrivateData(CollectionHandoffPrivate, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get handoff data: %v", err)
+	}
+	if handoffDataBytes == nil {
+		return nil, fmt.Errorf("handoff data not found for delivery %s handoff %s", deliveryID, handoffID)
+	}
+
+	var handoffData HandoffPrivateData
+	if err := json.Unmarshal(handoffDataBytes, &handoffData); err != nil {
+		return nil, fmt.Errorf("failed to parse handoff data: %v", err)
+	}
+
+	return &handoffData, nil
+}
+
+// SetPricingData stores confidential pricing information
+// Only accessible by SellersOrg
+func (c *DeliveryContract) SetPricingData(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+) error {
+	// Extract caller identity
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only SellersOrg can set pricing data
+	if caller.MSP != "SellersOrgMSP" {
+		return fmt.Errorf("only SellersOrg can set pricing data")
+	}
+
+	// Get private data from transient map
+	transientMap, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return fmt.Errorf("failed to get transient data: %v", err)
+	}
+
+	pricingDataJSON, exists := transientMap["pricingData"]
+	if !exists {
+		return fmt.Errorf("pricingData not found in transient data")
+	}
+
+	var pricingData PricingData
+	if err := json.Unmarshal(pricingDataJSON, &pricingData); err != nil {
+		return fmt.Errorf("failed to parse pricing data: %v", err)
+	}
+
+	// Set delivery ID
+	pricingData.DeliveryID = deliveryID
+
+	// Store in private data collection
+	pricingDataBytes, err := json.Marshal(pricingData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal pricing data: %v", err)
+	}
+
+	if err := ctx.GetStub().PutPrivateData(CollectionPricingData, deliveryID, pricingDataBytes); err != nil {
+		return fmt.Errorf("failed to store pricing data: %v", err)
+	}
+
+	return nil
+}
+
+// GetPricingData retrieves confidential pricing information
+func (c *DeliveryContract) GetPricingData(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+) (*PricingData, error) {
+	// Extract caller identity
+	caller, err := getCallerIdentity(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get caller identity: %v", err)
+	}
+
+	// Only SellersOrg can read pricing data
+	if caller.MSP != "SellersOrgMSP" {
+		return nil, fmt.Errorf("only SellersOrg can read pricing data")
+	}
+
+	pricingDataBytes, err := ctx.GetStub().GetPrivateData(CollectionPricingData, deliveryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pricing data: %v", err)
+	}
+	if pricingDataBytes == nil {
+		return nil, fmt.Errorf("pricing data not found for delivery %s", deliveryID)
+	}
+
+	var pricingData PricingData
+	if err := json.Unmarshal(pricingDataBytes, &pricingData); err != nil {
+		return nil, fmt.Errorf("failed to parse pricing data: %v", err)
+	}
+
+	return &pricingData, nil
+}
+
+// VerifyDeliveryPrivateDataHash verifies that a hash matches the stored private data
+// This allows LogisticsOrg to verify data without seeing the content
+func (c *DeliveryContract) VerifyDeliveryPrivateDataHash(
+	ctx contractapi.TransactionContextInterface,
+	deliveryID string,
+	expectedHash string,
+) (bool, error) {
+	hashBytes, err := ctx.GetStub().GetPrivateDataHash(CollectionDeliveryPrivate, deliveryID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get private data hash: %v", err)
+	}
+	if hashBytes == nil {
+		return false, fmt.Errorf("no private data found for delivery %s", deliveryID)
+	}
+
+	// Compare hashes
+	actualHash := fmt.Sprintf("%x", hashBytes)
+	return actualHash == expectedHash, nil
 }

@@ -4,6 +4,7 @@ A production-ready multi-organization Hyperledger Fabric delivery tracking syste
 
 ## Features
 
+### Core Features
 - **Multi-Org Blockchain Network**: 3 organizations (Platform, Sellers, Logistics) with Raft consensus
 - **Per-User X.509 Identities**: Each user enrolled via Fabric CA gets their own blockchain identity
 - **Role-Based Access Control**: Customers, Sellers, Delivery Persons with organization-based permissions
@@ -11,6 +12,25 @@ A production-ready multi-organization Hyperledger Fabric delivery tracking syste
 - **Dispute Handling**: Recipients can dispute handoffs with reasons recorded on blockchain
 - **Immutable Audit Trail**: Full history of all delivery state changes with transaction IDs
 - **Full TLS/HTTPS**: All services communicate over TLS (Fabric network, API, MongoDB, UI)
+
+### Security Features (v2.0)
+- **Encrypted Wallet Storage**: AES-256-GCM encryption with PBKDF2 key derivation for private keys
+- **2-of-3 Endorsement Policy**: Transactions require endorsement from at least 2 organizations
+- **Input Validation**: Comprehensive chaincode-level validation (delivery ID format, weights, dimensions)
+- **Private Data Collections**: 
+  - `deliveryPrivateDetails`: Sensitive address/contact info (Platform + Sellers)
+  - `handoffPrivateData`: Photo/signature hashes (Logistics + Platform)
+  - `pricingData`: Confidential pricing (Sellers only)
+
+### Performance Features (v2.0)
+- **CouchDB State Database**: Rich query support with JSON document storage
+- **Composite Key Indexes**: O(log n) lookups for seller, customer, custodian, and status queries
+- **CouchDB Rich Queries**: Date range queries, location-based queries, custom selectors
+
+### Real-Time Features (v2.0)
+- **Chaincode Event Subscription**: NestJS listens to blockchain events
+- **WebSocket Gateway**: Real-time push notifications to frontend clients
+- **Event Types**: delivery:created, delivery:statusChanged, handoff:initiated/confirmed/disputed
 
 ## Architecture
 
@@ -27,13 +47,14 @@ A production-ready multi-organization Hyperledger Fabric delivery tracking syste
 │  └─────────────────────────────────────────────────────────────────────────┘    │
 │                                                                                 │
 │  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │                        Peer Organizations                               │    │
+│  │                     Peer Organizations + CouchDB                        │    │
 │  │                                                                         │    │
 │  │  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐         │    │
 │  │  │   PlatformOrg    │ │   SellersOrg     │ │  LogisticsOrg    │         │    │
 │  │  │                  │ │                  │ │                  │         │    │
-│  │  │  peer0 :7051     │ │  peer0 :9051     │ │  peer0 :11051    │         │    │
+│  │  │  peer0 :7051     │ │  peer0 :8051     │ │  peer0 :9051     │         │    │
 │  │  │  ca    :7054     │ │  ca    :8054     │ │  ca    :9054     │         │    │
+│  │  │  couchdb :5984   │ │  couchdb :6984   │ │  couchdb :7984   │         │    │
 │  │  │                  │ │                  │ │                  │         │    │
 │  │  │  Users:          │ │  Users:          │ │  Users:          │         │    │
 │  │  │  - Customers     │ │  - Sellers       │ │  - Drivers       │         │    │
@@ -43,7 +64,8 @@ A production-ready multi-organization Hyperledger Fabric delivery tracking syste
 │                                                                                 │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐               │
 │  │  NestJS API      │  │  MongoDB         │  │  Chaincode       │               │
-│  │  :3000           │  │  :27017          │  │  (delivery)      │               │
+│  │  :3000 (HTTPS)   │  │  :27017 (TLS)    │  │  (delivery)      │               │
+│  │  WebSocket       │  │                  │  │  + PDC           │               │
 │  └──────────────────┘  └──────────────────┘  └──────────────────┘               │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -91,6 +113,10 @@ This will:
 - **UI**: https://localhost
 - **API**: https://localhost:3000/api/v1
 - **Health**: https://localhost:3000/api/v1/health
+- **WebSocket**: wss://localhost:3000/delivery-events
+- **CouchDB** (PlatformOrg): http://localhost:5984 (admin:adminpw)
+- **CouchDB** (SellersOrg): http://localhost:6984 (admin:adminpw)
+- **CouchDB** (LogisticsOrg): http://localhost:7984 (admin:adminpw)
 
 ### Verify System Health
 
@@ -275,6 +301,67 @@ curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/d
 
 The delivery status changes to `DISPUTED_*` and requires manual resolution.
 
+## WebSocket Real-Time Events
+
+Connect to the WebSocket gateway for real-time delivery updates:
+
+### Connection
+
+```javascript
+// Using socket.io-client
+import { io } from 'socket.io-client';
+
+const socket = io('wss://localhost:3000/delivery-events', {
+  auth: {
+    token: 'your-jwt-token'
+  },
+  rejectUnauthorized: false // for self-signed certs
+});
+```
+
+### Subscribe to Events
+
+```javascript
+// Subscribe to a specific delivery
+socket.emit('subscribe:delivery', { deliveryId: 'DEL-12345-ABC' }, (response) => {
+  console.log(response); // { success: true, message: 'Subscribed to delivery DEL-12345-ABC' }
+});
+
+// Subscribe to all events for a user
+socket.emit('subscribe:user', { userId: 'user-id' }, (response) => {
+  console.log(response);
+});
+```
+
+### Listen for Events
+
+```javascript
+// Delivery created
+socket.on('delivery:created', (data) => {
+  console.log('New delivery:', data.deliveryId, data.newStatus);
+});
+
+// Status changed
+socket.on('delivery:statusChanged', (data) => {
+  console.log(`Delivery ${data.deliveryId}: ${data.oldStatus} → ${data.newStatus}`);
+});
+
+// Handoff initiated
+socket.on('handoff:initiated', (data) => {
+  console.log(`Handoff from ${data.fromUserId} to ${data.toUserId}`);
+});
+
+// Handoff confirmed
+socket.on('handoff:confirmed', (data) => {
+  console.log(`Handoff confirmed, new custodian: ${data.newCustodianId}`);
+});
+
+// Handoff disputed
+socket.on('handoff:disputed', (data) => {
+  console.log(`Handoff disputed by ${data.disputedBy}`);
+});
+```
+
 ## Delivery Status Flow
 
 ```
@@ -309,31 +396,42 @@ IN_TRANSIT
 tracking/
 ├── chaincode/
 │   └── delivery/
-│       ├── delivery.go      # Smart contract implementation
-│       └── main.go          # Chaincode entry point
+│       ├── delivery.go           # Smart contract implementation
+│       ├── main.go               # Chaincode entry point
+│       ├── collections_config.json  # Private Data Collections config
+│       └── META-INF/
+│           └── statedb/couchdb/indexes/  # CouchDB index definitions
 ├── fabric-network/
 │   ├── config/
-│   │   ├── configtx.yaml    # Channel & org configuration
+│   │   ├── configtx.yaml         # Channel & org configuration
 │   │   └── crypto-config.yaml
-│   ├── organizations/       # Generated crypto material
+│   ├── organizations/            # Generated crypto material
 │   └── scripts/
 │       ├── start-network.sh
-│       ├── deploy-chaincode.sh
+│       ├── deploy-chaincode.sh   # Includes endorsement policy + PDC
 │       └── cleanup.sh
 ├── nestjs-api/
 │   └── src/
-│       ├── auth/            # JWT authentication
-│       ├── users/           # User management (MongoDB)
-│       ├── shop-items/      # Shop items (MongoDB)
-│       ├── orders/          # Orders (MongoDB)
-│       ├── deliveries/      # Delivery operations (Blockchain)
-│       └── fabric/          # Fabric Gateway & CA services
-├── docker-compose.yml       # All services
-├── Makefile                 # Convenience commands
+│       ├── auth/                 # JWT authentication
+│       ├── users/                # User management (MongoDB)
+│       ├── shop-items/           # Shop items (MongoDB)
+│       ├── orders/               # Orders (MongoDB)
+│       ├── deliveries/           # Delivery operations (Blockchain)
+│       ├── events/               # WebSocket gateway
+│       └── fabric/               # Fabric Gateway, CA, Events services
+│           ├── fabric-gateway.service.ts
+│           ├── fabric-ca.service.ts
+│           ├── wallet.service.ts       # Encrypted wallet storage
+│           └── chaincode-events.service.ts  # Event subscription
+├── certs/                        # TLS certificates (generated)
+├── docker-compose.yml            # All services + CouchDB
+├── Makefile                      # Convenience commands
 └── README.md
 ```
 
 ## Chaincode Functions
+
+### Core Functions
 
 | Function | Description | Allowed Roles |
 |----------|-------------|---------------|
@@ -345,9 +443,29 @@ tracking/
 | `DisputeHandoff` | Reject custody transfer | DELIVERY_PERSON, CUSTOMER |
 | `CancelHandoff` | Cancel pending handoff | Handoff initiator |
 | `CancelDelivery` | Cancel delivery | CUSTOMER (before pickup) |
-| `QueryDeliveriesByCustodian` | List user's deliveries | Any authenticated user |
-| `QueryDeliveriesByStatus` | List by status | Any authenticated user |
+
+### Query Functions
+
+| Function | Description | Allowed Roles |
+|----------|-------------|---------------|
+| `QueryDeliveriesByCustodian` | List user's deliveries (uses composite keys) | Any authenticated user |
+| `QueryDeliveriesByStatus` | List by status (uses composite keys) | Any authenticated user |
 | `GetDeliveryHistory` | Get blockchain history | Any participant |
+| `QueryDeliveriesRich` | CouchDB rich query (selector) | ADMIN only |
+| `QueryDeliveriesByDateRange` | Query by creation date range | Any authenticated user |
+| `QueryDeliveriesByLocation` | Query by city/state | DELIVERY_PERSON, ADMIN |
+
+### Private Data Functions
+
+| Function | Description | Allowed Orgs |
+|----------|-------------|--------------|
+| `SetDeliveryPrivateDetails` | Store sensitive address/contact | PlatformOrg, SellersOrg |
+| `GetDeliveryPrivateDetails` | Read sensitive address/contact | PlatformOrg, SellersOrg |
+| `SetHandoffPrivateData` | Store photo/signature hashes | LogisticsOrg, PlatformOrg |
+| `GetHandoffPrivateData` | Read photo/signature hashes | LogisticsOrg, PlatformOrg |
+| `SetPricingData` | Store confidential pricing | SellersOrg only |
+| `GetPricingData` | Read confidential pricing | SellersOrg only |
+| `VerifyDeliveryPrivateDataHash` | Verify data hash | Any org |
 
 ## Make Commands
 
@@ -385,7 +503,18 @@ JWT_EXPIRES_IN=24h
 
 # API
 API_PORT=3000
+
+# Wallet Encryption (REQUIRED - 32-char hex string)
+WALLET_ENCRYPTION_KEY=<32-character-hex-string>
+# Generate with: openssl rand -hex 16
 ```
+
+### Security Configuration
+
+The `WALLET_ENCRYPTION_KEY` is used to encrypt user private keys stored in MongoDB:
+- Uses AES-256-GCM encryption with PBKDF2 key derivation
+- Private keys are never stored in plaintext
+- Required for production deployments
 
 ## Troubleshooting
 

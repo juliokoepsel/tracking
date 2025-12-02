@@ -8,8 +8,9 @@ import { ShopItemsModule } from './shop-items/shop-items.module';
 import { OrdersModule } from './orders/orders.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
 import { FabricModule } from './fabric/fabric.module';
+import { EventsModule } from './events/events.module';
 import { HealthController } from './health.controller';
-import { fabricConfig, databaseConfig, jwtConfig, appConfig } from './config';
+import { databaseConfig } from './config';
 
 @Module({
   imports: [
@@ -17,14 +18,14 @@ import { fabricConfig, databaseConfig, jwtConfig, appConfig } from './config';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../.env'],
-      load: [fabricConfig, databaseConfig, jwtConfig, appConfig],
+      load: [databaseConfig],
     }),
 
     // MongoDB
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        uri: configService.get<string>('database.uri', 'mongodb://localhost:27017/delivery_tracking'),
+        uri: configService.get<string>('database.uri'),
       }),
       inject: [ConfigService],
     }),
@@ -36,6 +37,7 @@ import { fabricConfig, databaseConfig, jwtConfig, appConfig } from './config';
     ShopItemsModule,
     OrdersModule,
     DeliveriesModule,
+    EventsModule,
   ],
   controllers: [HealthController],
 })

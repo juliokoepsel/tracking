@@ -724,7 +724,7 @@ services:
       - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
     depends_on:
-      nestjs-api:
+      api-platform:
         condition: service_healthy
     networks:
       - delivery-network

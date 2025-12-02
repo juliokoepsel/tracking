@@ -60,7 +60,7 @@ export class UsersService {
     const org = RoleToOrgMap[createUserDto.role];
     let affiliation = org || 'independent';
     if (createUserDto.companyId && 
-        (createUserDto.role === UserRole.SELLER || createUserDto.role === UserRole.LOGISTICS_PROVIDER)) {
+        (createUserDto.role === UserRole.SELLER || createUserDto.role === UserRole.DELIVERY_PERSON)) {
       affiliation = `${org.toLowerCase()}.${createUserDto.companyId}`;
     }
 

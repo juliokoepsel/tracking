@@ -163,12 +163,12 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
     // Check if discovery should use localhost (for local development)
     const discoveryAsLocalhost = this.configService.get<string>('DISCOVERY_AS_LOCALHOST', 'true') === 'true';
 
-    const gateway = connect({
+    // Service discovery options for multi-org endorsement
+    // This allows the gateway to find endorsing peers from all organizations
+    const connectOptions: any = {
       client: connection.client,
       identity,
       signer,
-      // Enable service discovery for multi-org endorsement
-      // This allows the gateway to find endorsing peers from all organizations
       discovery: {
         enabled: true,
         asLocalhost: discoveryAsLocalhost,
@@ -177,7 +177,9 @@ export class FabricGatewayService implements OnModuleInit, OnModuleDestroy {
       endorseOptions: () => ({ deadline: Date.now() + 60000 }), // 60 seconds
       submitOptions: () => ({ deadline: Date.now() + 60000 }),
       commitStatusOptions: () => ({ deadline: Date.now() + 120000 }), // 2 minutes
-    });
+    };
+
+    const gateway = connect(connectOptions);
 
     this.activeGateways.set(userId, gateway);
     return gateway;

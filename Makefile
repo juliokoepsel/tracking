@@ -27,10 +27,12 @@ deploy-chaincode: ## Deploy the delivery chaincode to all organizations
 	@printf "$(GREEN)Deploying chaincode...$(NC)\n"
 	@./fabric-network/scripts/deploy-chaincode.sh
 
-start-api: generate-certs ## Start MongoDB, NestJS API, and UI services (HTTPS)
-	@printf "$(GREEN)Starting MongoDB, NestJS API, and UI...$(NC)\n"
-	@docker-compose up -d mongodb nestjs-api delivery-ui
-	@printf "$(GREEN)API is running at https://localhost:3000$(NC)\n"
+start-api: generate-certs ## Start MongoDB instances, NestJS APIs (per-org), and UI services
+	@printf "$(GREEN)Starting per-org MongoDB, NestJS API instances, and UI...$(NC)\n"
+	@docker-compose up -d --quiet-pull mongodb-platform mongodb-sellers mongodb-logistics api-platform api-sellers api-logistics delivery-ui 2>&1 | grep -v "Running\|Created\|Started\|Healthy" || true
+	@printf "$(GREEN)Platform API is running at https://localhost:3001$(NC)\n"
+	@printf "$(GREEN)Sellers API is running at https://localhost:3002$(NC)\n"
+	@printf "$(GREEN)Logistics API is running at https://localhost:3003$(NC)\n"
 	@printf "$(GREEN)UI is running at https://localhost$(NC)\n"
 
 start: start-network deploy-chaincode start-api ## Start the entire system
@@ -39,8 +41,9 @@ start: start-network deploy-chaincode start-api ## Start the entire system
 	@printf "$(GREEN)System started successfully!$(NC)\n"
 	@printf "$(GREEN)========================================$(NC)\n"
 	@printf "$(YELLOW)UI:  https://localhost$(NC)\n"
-	@printf "$(YELLOW)API: https://localhost:3000$(NC)\n"
-	@printf "$(YELLOW)Health: https://localhost:3000/api/v1/health$(NC)\n"
+	@printf "$(YELLOW)Platform API: https://localhost:3001$(NC)\n"
+	@printf "$(YELLOW)Sellers API:  https://localhost:3002$(NC)\n"
+	@printf "$(YELLOW)Logistics API: https://localhost:3003$(NC)\n"
 
 stop: ## Stop all services
 	@printf "$(YELLOW)Stopping all services...$(NC)\n"
@@ -55,8 +58,17 @@ restart: stop start ## Restart the entire system
 logs: ## View logs from all containers
 	@docker-compose logs -f
 
-logs-api: ## View NestJS API logs
-	@docker-compose logs -f nestjs-api
+logs-api: ## View all NestJS API logs (all orgs)
+	@docker-compose logs -f api-platform api-sellers api-logistics
+
+logs-api-platform: ## View Platform API logs
+	@docker-compose logs -f api-platform
+
+logs-api-sellers: ## View Sellers API logs
+	@docker-compose logs -f api-sellers
+
+logs-api-logistics: ## View Logistics API logs
+	@docker-compose logs -f api-logistics
 
 logs-peers: ## View all peer logs
 	@docker-compose logs -f peer0.platform.example.com peer0.sellers.example.com peer0.logistics.example.com
@@ -72,20 +84,28 @@ status: ## Show status of all containers
 	@docker-compose ps
 	@printf "\n"
 
-health: ## Check API health
+health: ## Check API health (all orgs)
 	@printf "$(GREEN)Checking API health...$(NC)\n"
-	@curl -sk https://localhost:3000/api/v1/health | jq . || echo "API not running"
+	@printf "Platform API (3001): " && curl -sk https://localhost:3001/api/v1/health | jq -r '.status // "not running"' || echo "not running"
+	@printf "Sellers API (3002):  " && curl -sk https://localhost:3002/api/v1/health | jq -r '.status // "not running"' || echo "not running"
+	@printf "Logistics API (3003): " && curl -sk https://localhost:3003/api/v1/health | jq -r '.status // "not running"' || echo "not running"
 	@printf "\n"
 
-build-api: ## Rebuild the NestJS API container
-	@printf "$(YELLOW)Building NestJS API container...$(NC)\n"
-	@docker-compose build nestjs-api
+build-api: ## Rebuild all NestJS API containers
+	@printf "$(YELLOW)Building NestJS API containers...$(NC)\n"
+	@docker-compose build api-platform api-sellers api-logistics
 
 shell-cli: ## Open a shell in the CLI container
 	@docker exec -it cli bash
 
-shell-api: ## Open a shell in the NestJS API container
-	@docker exec -it delivery-api sh
+shell-api: ## Open a shell in the Platform API container
+	@docker exec -it api-platform sh
+
+shell-api-sellers: ## Open a shell in the Sellers API container
+	@docker exec -it api-sellers sh
+
+shell-api-logistics: ## Open a shell in the Logistics API container
+	@docker exec -it api-logistics sh
 
 network-info: ## Display network information
 	@printf "$(GREEN)Network Information:$(NC)\n"
@@ -102,8 +122,10 @@ network-info: ## Display network information
 	@printf "  orderer2.orderer.example.com:8050\n"
 	@printf "  orderer3.orderer.example.com:9050\n"
 	@printf "\n"
-	@printf "$(GREEN)API:$(NC)\n"
-	@printf "  https://localhost:3000\n"
+	@printf "$(GREEN)APIs (per-org):$(NC)\n"
+	@printf "  Platform API:  https://localhost:3001\n"
+	@printf "  Sellers API:   https://localhost:3002\n"
+	@printf "  Logistics API: https://localhost:3003\n"
 	@printf "$(GREEN)UI:$(NC)\n"
 	@printf "  https://localhost\n"
 

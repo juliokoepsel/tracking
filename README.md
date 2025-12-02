@@ -135,16 +135,19 @@ This will:
 5. Start 3 Fabric CAs with TLS
 6. Create and join the delivery channel
 7. Deploy the delivery chaincode
-8. Start MongoDB (TLS enabled)
-9. Start the NestJS API (HTTPS)
+8. Start 3 MongoDB instances (TLS enabled, one per org)
+9. Start 3 NestJS API instances (HTTPS, one per org)
 10. Start the nginx UI (HTTPS)
 
 ### Access Points
 
-**Per-Organization APIs:**
-- **Platform API**: http://localhost:3001/api/v1 (Customers, Admins)
-- **Sellers API**: http://localhost:3002/api/v1 (Sellers)
-- **Logistics API**: http://localhost:3003/api/v1 (Delivery Persons)
+**Per-Organization APIs (HTTPS):**
+- **Platform API**: https://localhost:3001/api/v1 (Customers, Admins)
+- **Sellers API**: https://localhost:3002/api/v1 (Sellers)
+- **Logistics API**: https://localhost:3003/api/v1 (Delivery Persons)
+
+**Web UI:**
+- **Delivery UI**: https://localhost (via nginx)
 
 **Blockchain Explorer:**
 - **CouchDB** (PlatformOrg): http://localhost:5984 (admin:adminpw)
@@ -155,9 +158,9 @@ This will:
 
 ```bash
 # Check each org's API health
-curl http://localhost:3001/api/v1/health  # Platform
-curl http://localhost:3002/api/v1/health  # Sellers
-curl http://localhost:3003/api/v1/health  # Logistics
+curl -k https://localhost:3001/api/v1/health  # Platform
+curl -k https://localhost:3002/api/v1/health  # Sellers
+curl -k https://localhost:3003/api/v1/health  # Logistics
 ```
 
 ## API Usage
@@ -239,10 +242,10 @@ export TOKEN="<jwt_token_from_response>"
 ### Shop Items (Sellers Only)
 
 ```bash
-# Create a shop item
-curl -k -X POST https://localhost:3000/api/v1/shop-items \
+# Create a shop item (via Sellers API - port 3002)
+curl -k -X POST https://localhost:3002/api/v1/shop-items \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
   -d '{
     "name": "Wireless Headphones",
     "description": "Bluetooth 5.0 over-ear headphones",
@@ -250,15 +253,15 @@ curl -k -X POST https://localhost:3000/api/v1/shop-items \
   }'
 
 # List your shop items
-curl -k https://localhost:3000/api/v1/shop-items \
-  -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:3002/api/v1/shop-items \
+  -H "Authorization: Bearer $SELLER_TOKEN"
 ```
 
 ### Orders (Customers)
 
 ```bash
-# Create an order (as customer)
-curl -k -X POST https://localhost:3000/api/v1/orders \
+# Create an order (as customer via Platform API - port 3001)
+curl -k -X POST https://localhost:3001/api/v1/orders \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -d '{
@@ -266,8 +269,8 @@ curl -k -X POST https://localhost:3000/api/v1/orders \
     "items": [{"itemId": "<shop_item_id>", "quantity": 1}]
   }'
 
-# Seller confirms order (creates delivery on blockchain)
-curl -k -X POST https://localhost:3000/api/v1/orders/<order_id>/confirm \
+# Seller confirms order (creates delivery on blockchain via Sellers API - port 3002)
+curl -k -X POST https://localhost:3002/api/v1/orders/<order_id>/confirm \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -d '{
@@ -283,17 +286,22 @@ curl -k -X POST https://localhost:3000/api/v1/orders/<order_id>/confirm \
 
 ### Deliveries (Blockchain Operations)
 
+Each user queries their org's API:
+
 ```bash
-# Get delivery details
-curl -k https://localhost:3000/api/v1/deliveries/<delivery_id> \
+# Get delivery details (use your org's API port)
+# Platform users (customers): port 3001
+# Sellers: port 3002  
+# Logistics (drivers): port 3003
+curl -k https://localhost:3001/api/v1/deliveries/<delivery_id> \
   -H "Authorization: Bearer $TOKEN"
 
 # Get deliveries assigned to me
-curl -k https://localhost:3000/api/v1/deliveries/my \
+curl -k https://localhost:3001/api/v1/deliveries/my \
   -H "Authorization: Bearer $TOKEN"
 
 # Get full blockchain history
-curl -k https://localhost:3000/api/v1/deliveries/<delivery_id>/history \
+curl -k https://localhost:3001/api/v1/deliveries/<delivery_id>/history \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -302,32 +310,32 @@ curl -k https://localhost:3000/api/v1/deliveries/<delivery_id>/history \
 The system uses a two-phase handoff process for secure custody transfers:
 
 ```bash
-# 1. Seller initiates handoff to driver
-curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/initiate \
+# 1. Seller initiates handoff to driver (via Sellers API - port 3002)
+curl -k -X POST https://localhost:3002/api/v1/deliveries/<delivery_id>/handoff/initiate \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
   -d '{"toUserId": "<driver_id>", "toRole": "DELIVERY_PERSON"}'
 
-# 2. Driver confirms pickup
-curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/confirm \
+# 2. Driver confirms pickup (via Logistics API - port 3003)
+curl -k -X POST https://localhost:3003/api/v1/deliveries/<delivery_id>/handoff/confirm \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $DRIVER_TOKEN" \
   -d '{"city": "NYC", "state": "NY", "country": "US"}'
 
-# 3. Driver updates location during transit
-curl -X PUT https://localhost:3000/api/v1/deliveries/<delivery_id>/location \
+# 3. Driver updates location during transit (via Logistics API - port 3003)
+curl -k -X PUT https://localhost:3003/api/v1/deliveries/<delivery_id>/location \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $DRIVER_TOKEN" \
   -d '{"city": "Brooklyn", "state": "NY", "country": "US"}'
 
-# 4. Driver initiates handoff to customer
-curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/initiate \
+# 4. Driver initiates handoff to customer (via Logistics API - port 3003)
+curl -k -X POST https://localhost:3003/api/v1/deliveries/<delivery_id>/handoff/initiate \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $DRIVER_TOKEN" \
   -d '{"toUserId": "<customer_id>", "toRole": "CUSTOMER"}'
 
-# 5. Customer confirms delivery
-curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/confirm \
+# 5. Customer confirms delivery (via Platform API - port 3001)
+curl -k -X POST https://localhost:3001/api/v1/deliveries/<delivery_id>/handoff/confirm \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -d '{"city": "Brooklyn", "state": "NY", "country": "US"}'
@@ -338,8 +346,10 @@ curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/c
 Recipients can dispute a pending handoff:
 
 ```bash
-# Recipient disputes the handoff
-curl -k -X POST https://localhost:3000/api/v1/deliveries/<delivery_id>/handoff/dispute \
+# Recipient disputes the handoff (use recipient's org API)
+# Driver disputing: port 3003 (Logistics)
+# Customer disputing: port 3001 (Platform)
+curl -k -X POST https://localhost:3001/api/v1/deliveries/<delivery_id>/handoff/dispute \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $RECIPIENT_TOKEN" \
   -d '{"reason": "Package appears damaged, refusing to accept custody"}'
@@ -357,7 +367,9 @@ Connect to the WebSocket gateway for real-time delivery updates:
 // Using socket.io-client
 import { io } from 'socket.io-client';
 
-const socket = io('wss://localhost:3000/delivery-events', {
+// Connect to your org's API for WebSocket events
+// Platform users: port 3001, Sellers: port 3002, Logistics: port 3003
+const socket = io('wss://localhost:3001/delivery-events', {
   auth: {
     token: 'your-jwt-token'
   },

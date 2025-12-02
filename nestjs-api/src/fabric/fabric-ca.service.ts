@@ -254,7 +254,7 @@ export class FabricCAService implements OnModuleInit {
       // For sellers with companies: sellers.companyId
       // For independents: org (just the org name)
       let affiliation = '';
-      if (options?.companyId && (role === UserRole.SELLER || role === UserRole.LOGISTICS_PROVIDER)) {
+      if (options?.companyId && (role === UserRole.SELLER || role === UserRole.DELIVERY_PERSON)) {
         affiliation = `${org.toLowerCase()}.${options.companyId}`;
       }
 

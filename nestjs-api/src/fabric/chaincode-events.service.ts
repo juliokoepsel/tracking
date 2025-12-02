@@ -137,6 +137,18 @@ export class ChaincodeEventsService implements OnModuleInit, OnModuleDestroy {
       '/home/leviathan/Desktop/tracking/fabric-network/organizations',
     );
 
+    // Determine which org this API instance serves
+    const orgName = this.configService.get<string>('ORG_NAME', 'PlatformOrg');
+    
+    // Map org names to their domain and peer endpoint env var
+    const orgConfig: Record<string, { domain: string; peerEndpointEnv: string }> = {
+      'PlatformOrg': { domain: 'platform.example.com', peerEndpointEnv: 'PEER_PLATFORM_ENDPOINT' },
+      'SellersOrg': { domain: 'sellers.example.com', peerEndpointEnv: 'PEER_SELLERS_ENDPOINT' },
+      'LogisticsOrg': { domain: 'logistics.example.com', peerEndpointEnv: 'PEER_LOGISTICS_ENDPOINT' },
+    };
+    
+    const config = orgConfig[orgName] || orgConfig['PlatformOrg'];
+
     // Use admin identity for event listening
     const adminUserId = 'admin';
     const adminIdentity = await this.walletService.get(adminUserId);
@@ -149,10 +161,10 @@ export class ChaincodeEventsService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Connect using admin identity from wallet
-    const peerEndpoint = this.configService.get<string>('PEER_PLATFORM_ENDPOINT', 'localhost:7051');
+    const peerEndpoint = this.configService.get<string>(config.peerEndpointEnv, 'localhost:7051');
     const tlsCertPath = path.join(
       cryptoPath,
-      'peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt',
+      `peerOrganizations/${config.domain}/peers/peer0.${config.domain}/tls/ca.crt`,
     );
 
     if (!fs.existsSync(tlsCertPath)) {
@@ -163,7 +175,7 @@ export class ChaincodeEventsService implements OnModuleInit, OnModuleDestroy {
     const tlsCredentials = grpc.credentials.createSsl(tlsCert);
 
     const client = new grpc.Client(peerEndpoint, tlsCredentials, {
-      'grpc.ssl_target_name_override': 'peer0.platform.example.com',
+      'grpc.ssl_target_name_override': `peer0.${config.domain}`,
     });
 
     const identity = createIdentity(adminIdentity.mspId, adminIdentity.certificate);
@@ -191,29 +203,50 @@ export class ChaincodeEventsService implements OnModuleInit, OnModuleDestroy {
    * Connect using MSP credentials from filesystem (fallback)
    */
   private async connectWithMspCredentials(cryptoPath: string): Promise<void> {
-    const peerEndpoint = this.configService.get<string>('PEER_PLATFORM_ENDPOINT', 'localhost:7051');
+    // Determine which org this API instance serves
+    const orgName = this.configService.get<string>('ORG_NAME', 'PlatformOrg');
+    
+    // Map org names to their domain and MSP
+    const orgConfig: Record<string, { domain: string; msp: string; peerEndpointEnv: string }> = {
+      'PlatformOrg': { domain: 'platform.example.com', msp: 'PlatformOrgMSP', peerEndpointEnv: 'PEER_PLATFORM_ENDPOINT' },
+      'SellersOrg': { domain: 'sellers.example.com', msp: 'SellersOrgMSP', peerEndpointEnv: 'PEER_SELLERS_ENDPOINT' },
+      'LogisticsOrg': { domain: 'logistics.example.com', msp: 'LogisticsOrgMSP', peerEndpointEnv: 'PEER_LOGISTICS_ENDPOINT' },
+    };
+
+    const config = orgConfig[orgName] || orgConfig['PlatformOrg'];
+    const peerEndpoint = this.configService.get<string>(config.peerEndpointEnv, 'localhost:7051');
     
     const tlsCertPath = path.join(
       cryptoPath,
-      'peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt',
+      `peerOrganizations/${config.domain}/peers/peer0.${config.domain}/tls/ca.crt`,
     );
-    const certPath = path.join(
+    
+    // Find the cert file (may be named Admin@domain-cert.pem or cert.pem)
+    const signcertsPath = path.join(
       cryptoPath,
-      'peerOrganizations/platform.example.com/users/Admin@platform.example.com/msp/signcerts/cert.pem',
+      `peerOrganizations/${config.domain}/users/Admin@${config.domain}/msp/signcerts`,
     );
+    
     const keyPath = path.join(
       cryptoPath,
-      'peerOrganizations/platform.example.com/users/Admin@platform.example.com/msp/keystore',
+      `peerOrganizations/${config.domain}/users/Admin@${config.domain}/msp/keystore`,
     );
 
-    if (!fs.existsSync(tlsCertPath) || !fs.existsSync(certPath)) {
-      throw new Error('Required MSP credentials not found');
+    if (!fs.existsSync(tlsCertPath) || !fs.existsSync(signcertsPath)) {
+      throw new Error(`Required MSP credentials not found for ${orgName}`);
     }
+
+    // Find cert file in signcerts directory
+    const certFiles = fs.readdirSync(signcertsPath);
+    if (certFiles.length === 0) {
+      throw new Error(`No certificate found in signcerts for ${orgName}`);
+    }
+    const certPath = path.join(signcertsPath, certFiles[0]);
 
     // Find the private key file in keystore
     const keyFiles = fs.readdirSync(keyPath);
     if (keyFiles.length === 0) {
-      throw new Error('No private key found in keystore');
+      throw new Error(`No private key found in keystore for ${orgName}`);
     }
     const privateKeyPath = path.join(keyPath, keyFiles[0]);
 
@@ -223,10 +256,10 @@ export class ChaincodeEventsService implements OnModuleInit, OnModuleDestroy {
 
     const tlsCredentials = grpc.credentials.createSsl(tlsCert);
     const client = new grpc.Client(peerEndpoint, tlsCredentials, {
-      'grpc.ssl_target_name_override': 'peer0.platform.example.com',
+      'grpc.ssl_target_name_override': `peer0.${config.domain}`,
     });
 
-    const identity = createIdentity('PlatformOrgMSP', certificate);
+    const identity = createIdentity(config.msp, certificate);
     const signer = createSigner(privateKey);
 
     this.gateway = connect({

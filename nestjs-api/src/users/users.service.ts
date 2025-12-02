@@ -30,6 +30,15 @@ export class UsersService {
    * Create a new user with Fabric CA enrollment
    */
   async create(createUserDto: CreateUserDto): Promise<UserDocument> {
+    // Validate that the role is allowed for this API instance's organization
+    if (!this.fabricCAService.isRoleAllowedForOrg(createUserDto.role as UserRole)) {
+      const currentOrg = this.fabricCAService.getCurrentOrg();
+      throw new BadRequestException(
+        `Role ${createUserDto.role} cannot be registered through this API (${currentOrg}). ` +
+        `Use the appropriate organization's API endpoint.`
+      );
+    }
+
     // Check for existing user
     const existingUser = await this.userModel.findOne({
       $or: [

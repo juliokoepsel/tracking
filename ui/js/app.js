@@ -8,7 +8,30 @@
 // API Client & Authentication
 // ============================================
 
-const API_BASE = '/api/v1';
+// Organization-specific API endpoints
+const API_ENDPOINTS = {
+    platform: '/api/platform/v1',   // Customers, Admins
+    sellers: '/api/sellers/v1',     // Sellers
+    logistics: '/api/logistics/v1', // Delivery Persons
+    default: '/api/v1'              // Fallback (routes to platform)
+};
+
+// Map roles to their organization's API
+const ROLE_TO_API = {
+    'CUSTOMER': 'platform',
+    'ADMIN': 'platform',
+    'SELLER': 'sellers',
+    'DELIVERY_PERSON': 'logistics'
+};
+
+// Get the appropriate API base URL for a role
+function getApiBaseForRole(role) {
+    const org = ROLE_TO_API[role] || 'platform';
+    return API_ENDPOINTS[org];
+}
+
+// Current API base (changes based on logged-in user)
+let API_BASE = API_ENDPOINTS.default;
 let currentUser = null;
 let jwtToken = null;
 
@@ -17,6 +40,9 @@ function setAuth(token, user) {
     jwtToken = token;
     sessionStorage.setItem('jwt', token);
     sessionStorage.setItem('user', JSON.stringify(user));
+    
+    // Set API_BASE based on user's role for subsequent requests
+    API_BASE = getApiBaseForRole(user.role);
 }
 
 function getAuth() {
@@ -25,7 +51,13 @@ function getAuth() {
 
 function getStoredUser() {
     const user = sessionStorage.getItem('user');
-    return user ? JSON.parse(user) : null;
+    if (user) {
+        const parsed = JSON.parse(user);
+        // Restore API_BASE when retrieving stored user
+        API_BASE = getApiBaseForRole(parsed.role);
+        return parsed;
+    }
+    return null;
 }
 
 function clearAuth() {
@@ -236,22 +268,54 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     showLoading();
     
     try {
-        // Login with NestJS JWT auth
-        const loginResponse = await fetch(`${API_BASE}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
+        // Try each org's API until one succeeds
+        // Users only exist in their org's database
+        const apisToTry = [
+            { name: 'platform', base: API_ENDPOINTS.platform },
+            { name: 'sellers', base: API_ENDPOINTS.sellers },
+            { name: 'logistics', base: API_ENDPOINTS.logistics }
+        ];
         
-        const loginData = await loginResponse.json();
+        let loginData = null;
+        let lastError = null;
         
-        if (!loginResponse.ok) {
-            throw new Error(loginData.message || 'Login failed');
+        for (const api of apisToTry) {
+            try {
+                const loginResponse = await fetch(`${api.base}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await loginResponse.json();
+                
+                if (loginResponse.ok) {
+                    loginData = data;
+                    break;
+                }
+                
+                // 401 means wrong credentials, not "user not found"
+                // Keep trying other orgs only if it's a "not found" type error
+                if (loginResponse.status === 401 && data.message?.includes('Invalid')) {
+                    lastError = new Error(data.message || 'Invalid credentials');
+                    // Could be wrong password - don't try other orgs
+                    break;
+                }
+                
+                lastError = new Error(data.message || 'Login failed');
+            } catch (fetchError) {
+                lastError = fetchError;
+                // Network error, try next API
+            }
         }
         
-        // Store JWT and normalize user info (API uses full_name but we use fullName internally)
+        if (!loginData) {
+            throw lastError || new Error('Login failed');
+        }
+        
+        // Store JWT and normalize user info
         const user = loginData.user;
-        user.fullName = user.full_name || user.fullName;  // normalize
+        user.fullName = user.full_name || user.fullName;
         setAuth(loginData.access_token, user);
         currentUser = user;
         
@@ -321,9 +385,12 @@ async function registerUser() {
         }
     }
     
+    // Use the correct API endpoint based on role
+    const registerApiBase = getApiBaseForRole(role);
+    
     showLoading();
     try {
-        const response = await fetch(`${API_BASE}/auth/register`, {
+        const response = await fetch(`${registerApiBase}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userData)

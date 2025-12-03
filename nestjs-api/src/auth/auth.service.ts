@@ -10,6 +10,8 @@ export interface JwtPayload {
   sub: string; // userId
   username: string;
   role: string;
+  email?: string;    // Optional for cross-org validation
+  fullName?: string; // Optional for cross-org validation
 }
 
 export interface AuthResponse {
@@ -121,8 +123,6 @@ export class AuthService {
       fullName: registerDto.fullName || registerDto.username, // Default to username if not provided
       address: registerDto.address,
       vehicleInfo: registerDto.vehicleInfo,
-      companyId: registerDto.companyId,
-      companyName: registerDto.companyName,
     });
 
     // Generate JWT

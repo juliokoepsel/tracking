@@ -194,16 +194,12 @@ export class FabricCAService implements OnModuleInit {
    * @param role - User's role (determines which org's CA to use)
    * @param options - Optional enrollment options
    * @param options.secret - Pre-defined enrollment secret
-   * @param options.companyId - Company identifier for multi-tenant affiliation
-   * @param options.companyName - Human-readable company name
    */
   async enrollUser(
     userId: string,
     role: UserRole,
     options?: {
       secret?: string;
-      companyId?: string;
-      companyName?: string;
     },
   ): Promise<EnrollmentResult> {
     const org = RoleToOrgMap[role];
@@ -240,37 +236,19 @@ export class FabricCAService implements OnModuleInit {
         { name: 'userId', value: userId, ecert: true },
       ];
 
-      // Add company affiliation attributes if provided
-      // This enables multi-tenant support within the same org
-      if (options?.companyId) {
-        attrs.push({ name: 'companyId', value: options.companyId, ecert: true });
-      }
-      if (options?.companyName) {
-        attrs.push({ name: 'companyName', value: options.companyName, ecert: true });
-      }
-
-      // Determine affiliation string
-      // Format: org.department or org.company.department
-      // For sellers with companies: sellers.companyId
-      // For independents: org (just the org name)
-      let affiliation = '';
-      if (options?.companyId && (role === UserRole.SELLER || role === UserRole.DELIVERY_PERSON)) {
-        affiliation = `${org.toLowerCase()}.${options.companyId}`;
-      }
-
       // Register the user (requires admin as User object)
       await connection.caClient.register(
         {
           enrollmentID: userId,
           enrollmentSecret,
           role: 'client',
-          affiliation,
+          affiliation: '',
           attrs,
         },
         registrar,
       );
 
-      this.logger.log(`Registered user ${userId} with CA ${connection.caName}${options?.companyId ? ` (company: ${options.companyId})` : ''}`);
+      this.logger.log(`Registered user ${userId} with CA ${connection.caName}`);
 
       // Now enroll the user
       const enrollment = await connection.caClient.enroll({

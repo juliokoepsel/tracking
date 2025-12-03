@@ -1,6 +1,6 @@
 # Blockchain Delivery Tracking System
 
-A production-ready **decentralized** multi-organization Hyperledger Fabric delivery tracking system. Each organization runs their own API instance with separate database, achieving true organizational decentralization. Users get X.509 certificates with embedded role and company attributes for blockchain identity.
+A production-ready **decentralized** multi-organization Hyperledger Fabric delivery tracking system. Each organization runs their own API instance with separate database, achieving true organizational decentralization. Users get X.509 certificates with embedded role attributes for blockchain identity.
 
 ## Features
 
@@ -9,7 +9,6 @@ A production-ready **decentralized** multi-organization Hyperledger Fabric deliv
 - **Decentralized Infrastructure**: Each org runs their own API + MongoDB instance
 - **Per-User X.509 Identities**: Each user enrolled via Fabric CA gets their own blockchain identity
 - **Role-Based Access Control**: Customers, Sellers, Delivery Persons with organization-based permissions
-- **Multi-Tenant Company Support**: Multiple companies can exist within each organization
 - **Two-Phase Custody Handoffs**: Secure package transfers with initiate/confirm flow
 - **State-Based Endorsement**: Per-delivery endorsement policies follow custody chain
 - **Dispute Handling**: Recipients can dispute handoffs with reasons recorded on blockchain
@@ -22,13 +21,11 @@ A production-ready **decentralized** multi-organization Hyperledger Fabric deliv
 - **Service Discovery**: Dynamic peer discovery via gossip protocol
 - **Input Validation**: Comprehensive chaincode-level validation (delivery ID format, weights, dimensions)
 - **Private Data Collections**: 
-  - `deliveryPrivateDetails`: Sensitive address/contact info (Platform + Sellers)
-  - `handoffPrivateData`: Photo/signature hashes (Logistics + Platform)
-  - `pricingData`: Confidential pricing (Sellers only)
+  - `deliveryPrivateDetails`: Sensitive address info (all orgs)
 
 ### Performance Features
 - **CouchDB State Database**: Rich query support with JSON document storage
-- **Composite Key Indexes**: O(log n) lookups for seller, customer, custodian, status, and company queries
+- **Composite Key Indexes**: O(log n) lookups for seller, customer, custodian, status, and order queries
 - **CouchDB Rich Queries**: Date range queries, location-based queries, custom selectors
 
 ### Real-Time Features
@@ -101,6 +98,18 @@ Each organization operates independently:
 - 2-of-3 endorsement required for all blockchain transactions
 - Per-delivery state policies follow custody chain
 
+### Authentication Model
+
+| Layer | Method | Purpose |
+|-------|--------|---------|
+| HTTP API | JWT (shared secret) | Identify user for API requests |
+| Cross-org writes | HTTP verification | Verify user exists in home org for sensitive operations |
+| Blockchain | X.509 certificate | Cryptographic identity for all Fabric transactions |
+
+- **Read operations**: JWT signature validation only (fast)
+- **Sensitive writes** (orders): JWT + cross-org HTTP verification
+- **Blockchain operations**: User's X.509 certificate from wallet
+
 ## Quick Start
 
 ### Prerequisites
@@ -149,11 +158,6 @@ This will:
 **Web UI:**
 - **Delivery UI**: https://localhost (via nginx)
 
-**Blockchain Explorer:**
-- **CouchDB** (PlatformOrg): http://localhost:5984 (admin:adminpw)
-- **CouchDB** (SellersOrg): http://localhost:6984 (admin:adminpw)
-- **CouchDB** (LogisticsOrg): http://localhost:7984 (admin:adminpw)
-
 ### Verify System Health
 
 ```bash
@@ -173,20 +177,18 @@ Each user type registers with their organization's API:
 
 ```bash
 # Register a seller (via Sellers API - port 3002)
-curl -X POST http://localhost:3002/api/v1/auth/register \
+curl -k -X POST https://localhost:3002/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "seller1",
     "email": "seller@example.com",
     "password": "password123",
     "fullName": "Test Seller",
-    "role": "SELLER",
-    "companyId": "acme-corp",
-    "companyName": "Acme Corporation"
+    "role": "SELLER"
   }'
 
 # Register a customer (via Platform API - port 3001)
-curl -X POST http://localhost:3001/api/v1/auth/register \
+curl -k -X POST https://localhost:3001/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "customer1",
@@ -204,7 +206,7 @@ curl -X POST http://localhost:3001/api/v1/auth/register \
   }'
 
 # Register a delivery person (via Logistics API - port 3003)
-curl -X POST http://localhost:3003/api/v1/auth/register \
+curl -k -X POST https://localhost:3003/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "driver1",
@@ -215,9 +217,7 @@ curl -X POST http://localhost:3003/api/v1/auth/register \
     "vehicleInfo": {
       "type": "Van",
       "licensePlate": "ABC123"
-    },
-    "companyId": "fast-logistics",
-    "companyName": "Fast Logistics Inc"
+    }
   }'
 ```
 
@@ -226,12 +226,12 @@ curl -X POST http://localhost:3003/api/v1/auth/register \
 ```bash
 # Login to appropriate org's API
 # Sellers login to port 3002
-curl -X POST http://localhost:3002/api/v1/auth/login \
+curl -k -X POST https://localhost:3002/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "seller1", "password": "password123"}'
 
 # Customers login to port 3001
-curl -X POST http://localhost:3001/api/v1/auth/login \
+curl -k -X POST https://localhost:3001/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "customer1", "password": "password123"}'
 
@@ -260,8 +260,10 @@ curl -k https://localhost:3002/api/v1/shop-items \
 ### Orders (Customers)
 
 ```bash
-# Create an order (as customer via Platform API - port 3001)
-curl -k -X POST https://localhost:3001/api/v1/orders \
+# Create an order (as customer via Sellers API - port 3002)
+# Orders are created on Sellers API where shop items exist.
+# Customer JWT is validated via cross-org verification with Platform API.
+curl -k -X POST https://localhost:3002/api/v1/orders \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -d '{
@@ -479,7 +481,7 @@ tracking/
 │       ├── common/enums.ts       # Org/MSP mappings, role permissions
 │       └── fabric/               # Fabric Gateway, CA, Events services
 │           ├── fabric-gateway.service.ts  # Service discovery enabled
-│           ├── fabric-ca.service.ts       # Per-org CA, company attrs
+│           ├── fabric-ca.service.ts       # Per-org CA enrollment
 │           ├── wallet.service.ts          # Per-org encrypted storage
 │           └── chaincode-events.service.ts  # Event subscription
 ├── certs/                        # TLS certificates (generated)
@@ -509,7 +511,6 @@ tracking/
 |----------|-------------|---------------|
 | `QueryDeliveriesByCustodian` | List user's deliveries (uses composite keys) | Any authenticated user |
 | `QueryDeliveriesByStatus` | List by status (uses composite keys) | Any authenticated user |
-| `QueryDeliveriesByCompany` | List company's deliveries (multi-tenant) | SELLER, ADMIN |
 | `GetDeliveryHistory` | Get blockchain history | Any participant |
 | `QueryDeliveriesRich` | CouchDB rich query (selector) | ADMIN only |
 | `QueryDeliveriesByDateRange` | Query by creation date range | Any authenticated user |
@@ -519,12 +520,8 @@ tracking/
 
 | Function | Description | Allowed Orgs |
 |----------|-------------|--------------|
-| `SetDeliveryPrivateDetails` | Store sensitive address/contact | PlatformOrg, SellersOrg |
-| `GetDeliveryPrivateDetails` | Read sensitive address/contact | PlatformOrg, SellersOrg |
-| `SetHandoffPrivateData` | Store photo/signature hashes | LogisticsOrg, PlatformOrg |
-| `GetHandoffPrivateData` | Read photo/signature hashes | LogisticsOrg, PlatformOrg |
-| `SetPricingData` | Store confidential pricing | SellersOrg only |
-| `GetPricingData` | Read confidential pricing | SellersOrg only |
+| `SetDeliveryPrivateDetails` | Store sensitive address | PlatformOrg, SellersOrg |
+| `GetDeliveryPrivateDetails` | Read sensitive address | All orgs |
 | `VerifyDeliveryPrivateDataHash` | Verify data hash | Any org |
 
 ## Endorsement Policies
@@ -550,25 +547,6 @@ Each delivery has a dynamic endorsement policy that follows its custody chain:
 | Customer received | PlatformOrgMSP |
 
 When custody changes via `ConfirmHandoff`, the policy updates to require the new custodian's organization.
-
-### Multi-Tenant Company Support
-
-Users can belong to companies within their organization:
-
-```json
-{
-  "role": "SELLER",
-  "companyId": "acme-corp",
-  "companyName": "Acme Corporation"
-}
-```
-
-Certificate attributes embedded via Fabric CA:
-- `role` - User role (SELLER, DELIVERY_PERSON, etc.)
-- `companyId` - Company identifier for affiliation
-- `companyName` - Human-readable company name
-
-Sellers from the same company can view each other's deliveries via `QueryDeliveriesByCompany`.
 
 ## Make Commands
 
@@ -609,6 +587,9 @@ MONGO_URI_LOGISTICS=mongodb://mongodb-logistics:27019/delivery_tracking
 # JWT
 JWT_SECRET=<your-secret>
 JWT_EXPIRES_IN=24h
+
+# Cross-Org Verification (for sensitive operations like order creation)
+INTERNAL_API_KEY=<your-internal-key>
 
 # Per-Org Wallet Encryption Keys (REQUIRED - 32-char hex string each)
 WALLET_ENCRYPTION_KEY_PLATFORM=<32-character-hex-string>

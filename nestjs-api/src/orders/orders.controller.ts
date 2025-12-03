@@ -31,7 +31,8 @@ export class OrdersController {
     @CurrentUser() user: CurrentUserData,
     @Body() createDto: CreateOrderDto,
   ) {
-    const order = await this.ordersService.create(user.id, createDto);
+    // Pass isLocalUser flag for cross-org verification
+    const order = await this.ordersService.create(user.id, createDto, user.isLocalUser);
     return {
       success: true,
       message: 'Order created successfully',

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  UnauthorizedException,
   Logger,
   Inject,
   forwardRef,
@@ -16,6 +17,7 @@ import { ConfirmOrderDto } from './dto/confirm-order.dto';
 import { ShopItemsService } from '../shop-items/shop-items.service';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { UsersService } from '../users/users.service';
+import { CrossOrgVerificationService } from '../auth/cross-org-verification.service';
 import { OrderStatus, UserRole } from '../common/enums';
 
 @Injectable()
@@ -28,19 +30,37 @@ export class OrdersService {
     private usersService: UsersService,
     @Inject(forwardRef(() => DeliveriesService))
     private deliveriesService: DeliveriesService,
+    private crossOrgVerificationService: CrossOrgVerificationService,
   ) {}
 
   /**
    * Create a new order (customer only)
+   * In multi-org architecture, orders are created on the Sellers API
+   * where shop items exist. Customers from Platform API authenticate via JWT
+   * and are verified via cross-org HTTP call to Platform API.
    */
   async create(
     customerId: string,
     createDto: CreateOrderDto,
+    isLocalUser: boolean = true,
   ): Promise<OrderDocument> {
-    // Validate seller exists
-    const seller = await this.usersService.findById(createDto.sellerId);
-    if (!seller || seller.role !== UserRole.SELLER) {
-      throw new BadRequestException('Invalid seller');
+    // Cross-org verification for customers from Platform API
+    // This is a SENSITIVE WRITE operation, so we verify the customer actually exists
+    if (!isLocalUser) {
+      const verifiedUser = await this.crossOrgVerificationService.verifyUser(
+        customerId,
+        UserRole.CUSTOMER,
+      );
+      
+      if (!verifiedUser) {
+        throw new UnauthorizedException('Failed to verify customer identity');
+      }
+      
+      if (!verifiedUser.isActive) {
+        throw new UnauthorizedException('Customer account is deactivated');
+      }
+      
+      this.logger.log(`Cross-org verified customer ${customerId} for order creation`);
     }
 
     // Validate and fetch items with current prices

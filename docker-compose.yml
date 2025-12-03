@@ -234,8 +234,6 @@ services:
       - COUCHDB_PASSWORD=adminpw
     volumes:
       - couchdb.platform:/opt/couchdb/data
-    ports:
-      - "5984:5984"
     networks:
       - delivery-network
 
@@ -247,8 +245,6 @@ services:
       - COUCHDB_PASSWORD=adminpw
     volumes:
       - couchdb.sellers:/opt/couchdb/data
-    ports:
-      - "6984:5984"
     networks:
       - delivery-network
 
@@ -260,8 +256,6 @@ services:
       - COUCHDB_PASSWORD=adminpw
     volumes:
       - couchdb.logistics:/opt/couchdb/data
-    ports:
-      - "7984:5984"
     networks:
       - delivery-network
 
@@ -569,6 +563,8 @@ services:
       # JWT
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=7d
+      # Internal API Key for cross-org verification
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       # Wallet Encryption (Platform's key)
       - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_PLATFORM}
       # SSL Certs
@@ -627,6 +623,8 @@ services:
       # JWT
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=7d
+      # Internal API Key for cross-org verification
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       # Wallet Encryption (Sellers' key)
       - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_SELLERS}
       # SSL Certs
@@ -685,6 +683,8 @@ services:
       # JWT
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=7d
+      # Internal API Key for cross-org verification
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       # Wallet Encryption (Logistics' key)
       - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_LOGISTICS}
       # SSL Certs

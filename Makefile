@@ -28,8 +28,8 @@ deploy-chaincode: ## Deploy the delivery chaincode to all organizations
 	@./fabric-network/scripts/deploy-chaincode.sh
 
 start-api: generate-certs ## Start MongoDB instances, NestJS APIs (per-org), and UI services
-	@printf "$(GREEN)Starting per-org MongoDB, NestJS API instances, and UI...$(NC)\n"
-	@docker-compose up -d --quiet-pull mongodb-platform mongodb-sellers mongodb-logistics api-platform api-sellers api-logistics delivery-ui 2>&1 | grep -v "Running\|Created\|Started\|Healthy" || true
+	@printf "$(GREEN)Building and starting per-org MongoDB, NestJS API instances, and UI...$(NC)\n"
+	@docker-compose up -d --build --quiet-pull mongodb-platform mongodb-sellers mongodb-logistics api-platform api-sellers api-logistics delivery-ui 2>&1 | grep -v "Running\|Created\|Started\|Healthy" || true
 	@printf "$(GREEN)Platform API is running at https://localhost:3001$(NC)\n"
 	@printf "$(GREEN)Sellers API is running at https://localhost:3002$(NC)\n"
 	@printf "$(GREEN)Logistics API is running at https://localhost:3003$(NC)\n"

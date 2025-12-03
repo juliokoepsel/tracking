@@ -48,12 +48,16 @@ mkcert -cert-file nestjs.pem -key-file nestjs-key.pem localhost 127.0.0.1 ::1 ne
 
 echo ""
 echo -e "${YELLOW}Generating MongoDB certificate...${NC}"
-mkcert -cert-file mongodb.pem -key-file mongodb-key.pem localhost 127.0.0.1 ::1 mongodb delivery-mongodb
+mkcert -cert-file mongodb.pem -key-file mongodb-key.pem localhost 127.0.0.1 ::1 mongodb delivery-mongodb mongodb-platform mongodb-sellers mongodb-logistics
 
 # MongoDB requires cert and key in a single PEM file
 echo ""
 echo -e "${YELLOW}Creating combined MongoDB PEM file...${NC}"
 cat mongodb.pem mongodb-key.pem > mongodb-combined.pem
+
+echo ""
+echo -e "${YELLOW}Generating CouchDB certificate...${NC}"
+mkcert -cert-file couchdb.pem -key-file couchdb-key.pem localhost 127.0.0.1 ::1 couchdb.platform couchdb.sellers couchdb.logistics
 
 # Copy CA certificate for clients that need to verify
 echo ""

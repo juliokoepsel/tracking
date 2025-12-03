@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { FabricGatewayService } from '../fabric/fabric-gateway.service';
 import { WalletService } from '../fabric/wallet.service';
 import { UsersService } from '../users/users.service';
+import { CrossOrgVerificationService } from '../auth/cross-org-verification.service';
 import { Delivery, DeliveryHistoryRecord } from './types/delivery.types';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { InitiateHandoffDto } from './dto/initiate-handoff.dto';
@@ -19,6 +20,7 @@ export class DeliveriesService {
     private fabricGatewayService: FabricGatewayService,
     private walletService: WalletService,
     private usersService: UsersService,
+    private crossOrgVerificationService: CrossOrgVerificationService,
   ) {}
 
   /**
@@ -152,12 +154,29 @@ export class DeliveriesService {
     await this.ensureIdentity(userId);
 
     // Verify target user exists and has correct role
-    const targetUser = await this.usersService.findById(dto.toUserId);
+    // First try local database
+    let targetUser = await this.usersService.findById(dto.toUserId);
+    
+    // If not found locally, try cross-org verification
     if (!targetUser) {
-      throw new BadRequestException('Target user not found');
-    }
-    if (targetUser.role !== dto.toRole) {
-      throw new BadRequestException('Target user role mismatch');
+      const verifiedUser = await this.crossOrgVerificationService.verifyUser(
+        dto.toUserId,
+        dto.toRole as UserRole,
+      );
+      if (!verifiedUser) {
+        throw new BadRequestException('Target user not found');
+      }
+      if (verifiedUser.role !== dto.toRole) {
+        throw new BadRequestException('Target user role mismatch');
+      }
+      if (!verifiedUser.isActive) {
+        throw new BadRequestException('Target user is not active');
+      }
+      this.logger.debug(`Cross-org verified target user ${dto.toUserId} for handoff`);
+    } else {
+      if (targetUser.role !== dto.toRole) {
+        throw new BadRequestException('Target user role mismatch');
+      }
     }
 
     try {
@@ -322,30 +341,6 @@ export class DeliveriesService {
   }
 
   /**
-   * Query deliveries by company (multi-tenant support)
-   * Only sellers belonging to the company can query their company's deliveries
-   */
-  async getDeliveriesByCompany(userId: string, companyId: string): Promise<Delivery[]> {
-    await this.ensureIdentity(userId);
-
-    try {
-      const result = await this.fabricGatewayService.evaluateTransaction(
-        userId,
-        'QueryDeliveriesByCompany',
-        companyId,
-      );
-
-      return JSON.parse(new TextDecoder().decode(result)) as Delivery[];
-    } catch (error: any) {
-      if (error.message?.includes('only query your own company')) {
-        throw new BadRequestException('Can only query your own company\'s deliveries');
-      }
-      this.logger.error(`Failed to query deliveries by company: ${error.message}`);
-      return [];
-    }
-  }
-
-  /**
    * Get delivery history from blockchain
    */
   async getDeliveryHistory(userId: string, deliveryId: string): Promise<DeliveryHistoryRecord[]> {
@@ -399,6 +394,13 @@ export class DeliveriesService {
       }
     }
 
-    return this.usersService.getDeliveryAddress(delivery.customerId);
+    // Try local DB first
+    const localAddress = await this.usersService.getDeliveryAddress(delivery.customerId);
+    if (localAddress) {
+      return localAddress;
+    }
+
+    // Customer is on another org (Platform API), fetch cross-org
+    return this.crossOrgVerificationService.fetchCustomerAddress(delivery.customerId);
   }
 }

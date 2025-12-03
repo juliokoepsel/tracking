@@ -11,18 +11,19 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 
 import { ShopItemsService } from './shop-items.service';
 import { CreateShopItemDto } from './dto/create-shop-item.dto';
 import { UpdateShopItemDto } from './dto/update-shop-item.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../common/enums';
 
 @Controller('shop-items')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ShopItemsController {
   constructor(private readonly shopItemsService: ShopItemsService) {}
 
@@ -47,16 +48,9 @@ export class ShopItemsController {
   }
 
   @Get()
-  @Roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN)
-  async findAll(
-    @CurrentUser() user: CurrentUserData,
-    @Query('sellerId') sellerId?: string,
-  ) {
-    const items = await this.shopItemsService.findAll(
-      user.id,
-      user.role as UserRole,
-      sellerId,
-    );
+  @Public()
+  async findAll(@Query('sellerId') sellerId?: string) {
+    const items = await this.shopItemsService.findAllPublic(sellerId);
 
     return {
       success: true,
@@ -92,7 +86,7 @@ export class ShopItemsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.CUSTOMER, UserRole.SELLER, UserRole.ADMIN)
+  @Public()
   async findOne(@Param('id') id: string) {
     const item = await this.shopItemsService.findById(id);
 

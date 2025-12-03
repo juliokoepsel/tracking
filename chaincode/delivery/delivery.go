@@ -70,8 +70,6 @@ type Delivery struct {
 	DeliveryID           string            `json:"deliveryId"`
 	OrderID              string            `json:"orderId"`
 	SellerID             string            `json:"sellerId"`
-	SellerCompanyID      string            `json:"sellerCompanyId,omitempty"`   // Company affiliation for multi-tenant support
-	SellerCompanyName    string            `json:"sellerCompanyName,omitempty"` // Human-readable company name
 	CustomerID           string            `json:"customerId"`
 	PackageWeight        float64           `json:"packageWeight"`
 	PackageDimensions    PackageDimensions `json:"packageDimensions"`
@@ -106,46 +104,18 @@ type DeliveryEvent struct {
 // =====================================================
 
 // DeliveryPrivateDetails stores sensitive delivery information
-// Collection: deliveryPrivateDetails (accessible to PlatformOrg and SellersOrg)
+// Collection: deliveryPrivateDetails (accessible to all orgs)
 type DeliveryPrivateDetails struct {
-	DeliveryID          string  `json:"deliveryId"`
-	RecipientName       string  `json:"recipientName"`
-	RecipientPhone      string  `json:"recipientPhone"`
-	DeliveryStreet      string  `json:"deliveryStreet"`
-	DeliveryApartment   string  `json:"deliveryApartment,omitempty"`
-	DeliveryPostalCode  string  `json:"deliveryPostalCode"`
-	SpecialInstructions string  `json:"specialInstructions,omitempty"`
-	InsuranceValue      float64 `json:"insuranceValue,omitempty"`
-}
-
-// HandoffPrivateData stores photos/signatures for handoff verification
-// Collection: handoffPrivateData (accessible to LogisticsOrg and PlatformOrg)
-type HandoffPrivateData struct {
-	DeliveryID        string `json:"deliveryId"`
-	HandoffID         string `json:"handoffId"`
-	PhotoHash         string `json:"photoHash,omitempty"`         // Hash of photo (actual stored elsewhere)
-	SignatureHash     string `json:"signatureHash,omitempty"`     // Hash of signature
-	VerificationNotes string `json:"verificationNotes,omitempty"` // Notes from handoff
-	GPSLatitude       string `json:"gpsLatitude,omitempty"`
-	GPSLongitude      string `json:"gpsLongitude,omitempty"`
-	Timestamp         string `json:"timestamp"`
-}
-
-// PricingData stores confidential pricing between seller and platform
-// Collection: pricingData (accessible to SellersOrg only)
-type PricingData struct {
-	DeliveryID      string  `json:"deliveryId"`
-	ItemPrice       float64 `json:"itemPrice"`
-	ShippingCost    float64 `json:"shippingCost"`
-	PlatformFee     float64 `json:"platformFee"`
-	SellerNetAmount float64 `json:"sellerNetAmount"`
+	DeliveryID         string `json:"deliveryId"`
+	RecipientName      string `json:"recipientName"`
+	DeliveryStreet     string `json:"deliveryStreet"`
+	DeliveryApartment  string `json:"deliveryApartment,omitempty"`
+	DeliveryPostalCode string `json:"deliveryPostalCode"`
 }
 
 // Private Data Collection names
 const (
 	CollectionDeliveryPrivate = "deliveryPrivateDetails"
-	CollectionHandoffPrivate  = "handoffPrivateData"
-	CollectionPricingData     = "pricingData"
 )
 
 // CallerIdentity holds the extracted identity from the X.509 certificate
@@ -153,9 +123,7 @@ type CallerIdentity struct {
 	ID          string   // User ID extracted from CN
 	Role        UserRole // Role extracted from OU or attribute
 	MSP         string   // MSP ID (organization)
-	CompanyID   string   // Company identifier for multi-tenant affiliation
-	CompanyName string   // Human-readable company name
-	Affiliation string   // Full affiliation path (e.g., "sellers.acme-corp")
+	Affiliation string   // Full affiliation path (e.g., "sellers")
 }
 
 // getCallerIdentity extracts the caller's identity from the X.509 certificate
@@ -221,26 +189,16 @@ func getCallerIdentity(ctx contractapi.TransactionContextInterface) (*CallerIden
 		}
 	}
 
-	// Extract company affiliation attributes (optional - for multi-tenant support)
-	companyID, _, _ := clientIdentity.GetAttributeValue("companyId")
-	companyName, _, _ := clientIdentity.GetAttributeValue("companyName")
-
-	// Build affiliation from Organization field or certificate attributes
-	// Affiliation format: org.company (e.g., "sellers.acme-corp")
+	// Build affiliation from Organization field
 	affiliation := ""
 	if len(cert.Subject.Organization) > 0 {
 		affiliation = cert.Subject.Organization[0]
-		if companyID != "" {
-			affiliation = affiliation + "." + companyID
-		}
 	}
 
 	return &CallerIdentity{
 		ID:          userID,
 		Role:        role,
 		MSP:         mspID,
-		CompanyID:   companyID,
-		CompanyName: companyName,
 		Affiliation: affiliation,
 	}, nil
 }
@@ -374,25 +332,6 @@ func validateRole(caller *CallerIdentity, allowedRoles ...UserRole) error {
 	return fmt.Errorf("role %s is not authorized for this operation", caller.Role)
 }
 
-// validateCompanyInvolvement checks if the caller's company is involved in the delivery
-// This enables multi-tenant support where company members can see company deliveries
-func validateCompanyInvolvement(delivery *Delivery, caller *CallerIdentity) bool {
-	// If caller has no company, they can't use company-based access
-	if caller.CompanyID == "" {
-		return false
-	}
-
-	// Check if the delivery has company metadata
-	// The SellerCompanyID field needs to be added to Delivery struct
-	// For now, we'll check if the seller's company matches
-	// This requires storing company info in the delivery at creation time
-	if delivery.SellerCompanyID != "" && delivery.SellerCompanyID == caller.CompanyID {
-		return true
-	}
-
-	return false
-}
-
 // validateInvolvement checks if the caller is involved in the delivery
 func validateInvolvement(delivery *Delivery, caller *CallerIdentity) error {
 	// Admin can always read
@@ -404,11 +343,6 @@ func validateInvolvement(delivery *Delivery, caller *CallerIdentity) error {
 	if delivery.SellerID == caller.ID ||
 		delivery.CustomerID == caller.ID ||
 		delivery.CurrentCustodianID == caller.ID {
-		return nil
-	}
-
-	// Check company-based access for sellers in the same company
-	if caller.Role == RoleSeller && validateCompanyInvolvement(delivery, caller) {
 		return nil
 	}
 
@@ -501,7 +435,6 @@ const (
 	IndexCustodianDelivery = "custodian~deliveryId"
 	IndexStatusDelivery    = "status~deliveryId"
 	IndexOrderDelivery     = "order~deliveryId"
-	IndexCompanyDelivery   = "company~deliveryId" // Multi-tenant company index
 )
 
 // createDeliveryIndexes creates all composite key indexes for a delivery
@@ -551,18 +484,6 @@ func createDeliveryIndexes(ctx contractapi.TransactionContextInterface, delivery
 	}
 	if err := stub.PutState(orderKey, []byte{0x00}); err != nil {
 		return fmt.Errorf("failed to put order index: %v", err)
-	}
-
-	// Index by company (for multi-tenant support)
-	// Only create if seller has a company affiliation
-	if delivery.SellerCompanyID != "" {
-		companyKey, err := stub.CreateCompositeKey(IndexCompanyDelivery, []string{delivery.SellerCompanyID, delivery.DeliveryID})
-		if err != nil {
-			return fmt.Errorf("failed to create company composite key: %v", err)
-		}
-		if err := stub.PutState(companyKey, []byte{0x00}); err != nil {
-			return fmt.Errorf("failed to put company index: %v", err)
-		}
 	}
 
 	return nil
@@ -718,13 +639,11 @@ func (c *DeliveryContract) CreateDelivery(
 	currentTime := time.Now().UTC().Format(time.RFC3339)
 
 	delivery := Delivery{
-		DeliveryID:        deliveryID,
-		OrderID:           orderID,
-		SellerID:          caller.ID,          // Seller ID comes from the certificate!
-		SellerCompanyID:   caller.CompanyID,   // Company affiliation for multi-tenant support
-		SellerCompanyName: caller.CompanyName, // Human-readable company name
-		CustomerID:        customerID,
-		PackageWeight:     packageWeight,
+		DeliveryID:    deliveryID,
+		OrderID:       orderID,
+		SellerID:      caller.ID, // Seller ID comes from the certificate!
+		CustomerID:    customerID,
+		PackageWeight: packageWeight,
 		PackageDimensions: PackageDimensions{
 			Length: dimensionLength,
 			Width:  dimensionWidth,
@@ -1598,75 +1517,6 @@ func (c *DeliveryContract) QueryDeliveriesByStatus(
 	return deliveries, nil
 }
 
-// QueryDeliveriesByCompany returns all deliveries for a company (multi-tenant support)
-// Uses composite key index for efficient O(log n) lookups
-// Only sellers belonging to the company or admins can query
-func (c *DeliveryContract) QueryDeliveriesByCompany(
-	ctx contractapi.TransactionContextInterface,
-	companyID string,
-) ([]*Delivery, error) {
-	// Extract caller identity from X.509 certificate
-	caller, err := getCallerIdentity(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get caller identity: %v", err)
-	}
-
-	// Validate role - only sellers and admins can query by company
-	if err := validateRole(caller, RoleSeller, RoleAdmin); err != nil {
-		return nil, err
-	}
-
-	isAdmin := caller.Role == RoleAdmin
-
-	// Non-admin sellers can only query their own company's deliveries
-	if !isAdmin && caller.CompanyID != companyID {
-		return nil, fmt.Errorf("can only query your own company's deliveries")
-	}
-
-	// Use composite key index for company lookup
-	iterator, err := ctx.GetStub().GetStateByPartialCompositeKey(IndexCompanyDelivery, []string{companyID})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get deliveries by company: %v", err)
-	}
-	defer iterator.Close()
-
-	var deliveries []*Delivery
-	for iterator.HasNext() {
-		response, err := iterator.Next()
-		if err != nil {
-			return nil, fmt.Errorf("failed to iterate company index: %v", err)
-		}
-
-		// Extract deliveryID from composite key
-		_, compositeKeyParts, err := ctx.GetStub().SplitCompositeKey(response.Key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to split composite key: %v", err)
-		}
-		if len(compositeKeyParts) < 2 {
-			continue
-		}
-		deliveryID := compositeKeyParts[1]
-
-		// Fetch the actual delivery
-		deliveryBytes, err := ctx.GetStub().GetState(deliveryID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get delivery %s: %v", deliveryID, err)
-		}
-		if deliveryBytes == nil {
-			continue
-		}
-
-		var delivery Delivery
-		if err := json.Unmarshal(deliveryBytes, &delivery); err != nil {
-			continue
-		}
-
-		deliveries = append(deliveries, &delivery)
-	}
-
-	return deliveries, nil
-}
-
 // GetDeliveryHistory returns the complete history of a delivery
 func (c *DeliveryContract) GetDeliveryHistory(
 	ctx contractapi.TransactionContextInterface,
@@ -2029,9 +1879,9 @@ func (c *DeliveryContract) GetDeliveryPrivateDetails(
 		return nil, fmt.Errorf("failed to get caller identity: %v", err)
 	}
 
-	// Only PlatformOrg and SellersOrg can read private details
-	if caller.MSP != "PlatformOrgMSP" && caller.MSP != "SellersOrgMSP" {
-		return nil, fmt.Errorf("only PlatformOrg and SellersOrg can read delivery private details")
+	// All orgs can read private details (they need delivery address)
+	if caller.MSP != "PlatformOrgMSP" && caller.MSP != "SellersOrgMSP" && caller.MSP != "LogisticsOrgMSP" {
+		return nil, fmt.Errorf("only PlatformOrg, SellersOrg, and LogisticsOrg can read delivery private details")
 	}
 
 	privateDetailsBytes, err := ctx.GetStub().GetPrivateData(CollectionDeliveryPrivate, deliveryID)
@@ -2048,174 +1898,6 @@ func (c *DeliveryContract) GetDeliveryPrivateDetails(
 	}
 
 	return &privateDetails, nil
-}
-
-// SetHandoffPrivateData stores handoff verification data (photo hashes, signatures)
-// Only accessible by LogisticsOrg and PlatformOrg
-func (c *DeliveryContract) SetHandoffPrivateData(
-	ctx contractapi.TransactionContextInterface,
-	deliveryID string,
-	handoffID string,
-) error {
-	// Extract caller identity
-	caller, err := getCallerIdentity(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get caller identity: %v", err)
-	}
-
-	// Only LogisticsOrg and PlatformOrg can set handoff data
-	if caller.MSP != "LogisticsOrgMSP" && caller.MSP != "PlatformOrgMSP" {
-		return fmt.Errorf("only LogisticsOrg and PlatformOrg can set handoff private data")
-	}
-
-	// Get private data from transient map
-	transientMap, err := ctx.GetStub().GetTransient()
-	if err != nil {
-		return fmt.Errorf("failed to get transient data: %v", err)
-	}
-
-	handoffDataJSON, exists := transientMap["handoffData"]
-	if !exists {
-		return fmt.Errorf("handoffData not found in transient data")
-	}
-
-	var handoffData HandoffPrivateData
-	if err := json.Unmarshal(handoffDataJSON, &handoffData); err != nil {
-		return fmt.Errorf("failed to parse handoff data: %v", err)
-	}
-
-	// Set identifiers and timestamp
-	handoffData.DeliveryID = deliveryID
-	handoffData.HandoffID = handoffID
-	handoffData.Timestamp = time.Now().UTC().Format(time.RFC3339)
-
-	// Store in private data collection using composite key
-	key := fmt.Sprintf("%s_%s", deliveryID, handoffID)
-	handoffDataBytes, err := json.Marshal(handoffData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal handoff data: %v", err)
-	}
-
-	if err := ctx.GetStub().PutPrivateData(CollectionHandoffPrivate, key, handoffDataBytes); err != nil {
-		return fmt.Errorf("failed to store handoff data: %v", err)
-	}
-
-	return nil
-}
-
-// GetHandoffPrivateData retrieves handoff verification data
-func (c *DeliveryContract) GetHandoffPrivateData(
-	ctx contractapi.TransactionContextInterface,
-	deliveryID string,
-	handoffID string,
-) (*HandoffPrivateData, error) {
-	// Extract caller identity
-	caller, err := getCallerIdentity(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get caller identity: %v", err)
-	}
-
-	// Only LogisticsOrg and PlatformOrg can read handoff data
-	if caller.MSP != "LogisticsOrgMSP" && caller.MSP != "PlatformOrgMSP" {
-		return nil, fmt.Errorf("only LogisticsOrg and PlatformOrg can read handoff private data")
-	}
-
-	key := fmt.Sprintf("%s_%s", deliveryID, handoffID)
-	handoffDataBytes, err := ctx.GetStub().GetPrivateData(CollectionHandoffPrivate, key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get handoff data: %v", err)
-	}
-	if handoffDataBytes == nil {
-		return nil, fmt.Errorf("handoff data not found for delivery %s handoff %s", deliveryID, handoffID)
-	}
-
-	var handoffData HandoffPrivateData
-	if err := json.Unmarshal(handoffDataBytes, &handoffData); err != nil {
-		return nil, fmt.Errorf("failed to parse handoff data: %v", err)
-	}
-
-	return &handoffData, nil
-}
-
-// SetPricingData stores confidential pricing information
-// Only accessible by SellersOrg
-func (c *DeliveryContract) SetPricingData(
-	ctx contractapi.TransactionContextInterface,
-	deliveryID string,
-) error {
-	// Extract caller identity
-	caller, err := getCallerIdentity(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get caller identity: %v", err)
-	}
-
-	// Only SellersOrg can set pricing data
-	if caller.MSP != "SellersOrgMSP" {
-		return fmt.Errorf("only SellersOrg can set pricing data")
-	}
-
-	// Get private data from transient map
-	transientMap, err := ctx.GetStub().GetTransient()
-	if err != nil {
-		return fmt.Errorf("failed to get transient data: %v", err)
-	}
-
-	pricingDataJSON, exists := transientMap["pricingData"]
-	if !exists {
-		return fmt.Errorf("pricingData not found in transient data")
-	}
-
-	var pricingData PricingData
-	if err := json.Unmarshal(pricingDataJSON, &pricingData); err != nil {
-		return fmt.Errorf("failed to parse pricing data: %v", err)
-	}
-
-	// Set delivery ID
-	pricingData.DeliveryID = deliveryID
-
-	// Store in private data collection
-	pricingDataBytes, err := json.Marshal(pricingData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal pricing data: %v", err)
-	}
-
-	if err := ctx.GetStub().PutPrivateData(CollectionPricingData, deliveryID, pricingDataBytes); err != nil {
-		return fmt.Errorf("failed to store pricing data: %v", err)
-	}
-
-	return nil
-}
-
-// GetPricingData retrieves confidential pricing information
-func (c *DeliveryContract) GetPricingData(
-	ctx contractapi.TransactionContextInterface,
-	deliveryID string,
-) (*PricingData, error) {
-	// Extract caller identity
-	caller, err := getCallerIdentity(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get caller identity: %v", err)
-	}
-
-	// Only SellersOrg can read pricing data
-	if caller.MSP != "SellersOrgMSP" {
-		return nil, fmt.Errorf("only SellersOrg can read pricing data")
-	}
-
-	pricingDataBytes, err := ctx.GetStub().GetPrivateData(CollectionPricingData, deliveryID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pricing data: %v", err)
-	}
-	if pricingDataBytes == nil {
-		return nil, fmt.Errorf("pricing data not found for delivery %s", deliveryID)
-	}
-
-	var pricingData PricingData
-	if err := json.Unmarshal(pricingDataBytes, &pricingData); err != nil {
-		return nil, fmt.Errorf("failed to parse pricing data: %v", err)
-	}
-
-	return &pricingData, nil
 }
 
 // VerifyDeliveryPrivateDataHash verifies that a hash matches the stored private data

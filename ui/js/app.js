@@ -68,7 +68,7 @@ function clearAuth() {
 }
 
 // API request helper
-async function apiRequest(endpoint, method = 'GET', body = null) {
+async function apiRequest(endpoint, method = 'GET', body = null, targetOrg = null) {
     const headers = {};
     
     const token = getAuth();
@@ -82,7 +82,9 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
         options.body = JSON.stringify(body);
     }
     
-    const response = await fetch(`${API_BASE}${endpoint}`, options);
+    // Use specified org's API or default to current user's org
+    const apiBase = targetOrg ? API_ENDPOINTS[targetOrg] : API_BASE;
+    const response = await fetch(`${apiBase}${endpoint}`, options);
     
     if (response.status === 401) {
         clearAuth();
@@ -294,14 +296,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
                     break;
                 }
                 
-                // 401 means wrong credentials, not "user not found"
-                // Keep trying other orgs only if it's a "not found" type error
-                if (loginResponse.status === 401 && data.message?.includes('Invalid')) {
-                    lastError = new Error(data.message || 'Invalid credentials');
-                    // Could be wrong password - don't try other orgs
-                    break;
-                }
-                
+                // Store error but continue trying other orgs
+                // Since "Invalid credentials" is returned for both wrong password
+                // and user not found, we must try all orgs
                 lastError = new Error(data.message || 'Login failed');
             } catch (fetchError) {
                 lastError = fetchError;
@@ -427,7 +424,8 @@ async function loadShop() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/shop-items');
+        // Shop items are public - fetch from sellers API
+        const response = await apiRequest('/shop-items', 'GET', null, 'sellers');
         const items = response.data || response;
         
         let html = `
@@ -483,7 +481,8 @@ async function loadShop() {
 async function buyItem(itemId, sellerId) {
     showLoading();
     try {
-        // Create order with correct structure for NestJS API
+        // In multi-org architecture, orders are created on the Sellers API
+        // where shop items exist. Customer JWT works because of shared secret.
         const order = await apiRequest('/orders', 'POST', {
             sellerId: sellerId,
             items: [
@@ -492,7 +491,7 @@ async function buyItem(itemId, sellerId) {
                     quantity: 1
                 }
             ]
-        });
+        }, 'sellers');
         const orderId = order.data?.id || order.id;
         showToast('Order Placed!', `Order #${orderId.substring(0, 8)} created successfully.`, 'success');
         loadMyOrders();
@@ -508,7 +507,8 @@ async function loadMyOrders() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/orders/my');
+        // Customer orders are stored in Sellers API database
+        const response = await apiRequest('/orders/my', 'GET', null, 'sellers');
         const orders = response.data || extractList(response);
         
         let html = `
@@ -578,7 +578,8 @@ async function cancelOrder(orderId) {
     
     showLoading();
     try {
-        await apiRequest(`/orders/${orderId}/cancel`, 'PUT');
+        // Orders are stored in Sellers API database
+        await apiRequest(`/orders/${orderId}/cancel`, 'PUT', null, 'sellers');
         showToast('Success!', 'Order cancelled.', 'success');
         loadMyOrders();
     } catch (error) {
@@ -597,7 +598,8 @@ async function loadMyItems() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/shop-items');
+        // Sellers view their own items via their API (uses my-items endpoint)
+        const response = await apiRequest('/shop-items/my-items');
         const items = response.data || response;
         
         let html = `
@@ -787,15 +789,14 @@ async function submitConfirmOrder() {
 async function showAssignDeliveryModal(deliveryId) {
     document.getElementById('delivery-order-id').value = deliveryId;
     
-    // Load delivery persons
+    // Load delivery persons from the dedicated endpoint (supports cross-org)
     try {
-        const response = await apiRequest('/users');
-        const users = response.data || extractList(response);
-        const deliveryPersons = users.filter(u => u.role === 'DELIVERY_PERSON');
+        const response = await apiRequest('/users/delivery-persons');
+        const deliveryPersons = response.data || extractList(response);
         
         const select = document.getElementById('delivery-person-select');
         select.innerHTML = deliveryPersons.map(u => 
-            `<option value="${u.id}">${u.fullName || u.email}</option>`
+            `<option value="${u.id}">${u.fullName || u.username}</option>`
         ).join('');
         
         if (deliveryPersons.length === 0) {
@@ -1251,7 +1252,8 @@ async function loadAdminItems() {
     const dashboard = document.getElementById('dashboard-section');
     
     try {
-        const response = await apiRequest('/shop-items');
+        // Shop items are in sellers database - fetch from sellers API (public)
+        const response = await apiRequest('/shop-items', 'GET', null, 'sellers');
         const items = response.data || response;
         
         let html = `

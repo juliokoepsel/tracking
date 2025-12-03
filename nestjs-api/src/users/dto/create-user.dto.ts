@@ -76,22 +76,4 @@ export class CreateUserDto {
   @ValidateNested()
   @Type(() => AddressDto)
   address?: AddressDto;
-
-  /**
-   * Company identifier for multi-tenant affiliation
-   * Embedded in Fabric CA certificate for chaincode access control
-   */
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  companyId?: string;
-
-  /**
-   * Human-readable company name
-   * Embedded in Fabric CA certificate for display purposes
-   */
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  companyName?: string;
 }

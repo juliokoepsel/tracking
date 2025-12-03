@@ -7,12 +7,14 @@ import { Order, OrderSchema } from './schemas/order.schema';
 import { ShopItemsModule } from '../shop-items/shop-items.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { UsersModule } from '../users/users.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }]),
     ShopItemsModule,
     UsersModule,
+    AuthModule,
     forwardRef(() => DeliveriesModule),
   ],
   controllers: [OrdersController],

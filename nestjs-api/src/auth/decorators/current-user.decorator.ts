@@ -6,6 +6,7 @@ export interface CurrentUserData {
   email: string;
   role: string;
   fullName: string;
+  isLocalUser: boolean; // true if user exists in local DB, false if from another org
 }
 
 export const CurrentUser = createParamDecorator(

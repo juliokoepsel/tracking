@@ -46,17 +46,6 @@ export class RegisterDto {
   @IsOptional()
   fullName?: string;
 
-  // Company/Affiliation fields for flexible identity model
-  @IsString()
-  @IsOptional()
-  @MaxLength(100)
-  companyId?: string; // UUID or identifier for the company
-
-  @IsString()
-  @IsOptional()
-  @MaxLength(100)
-  companyName?: string; // Human-readable company name (e.g., "FedEx", "Amazon")
-
   @IsObject()
   @ValidateNested()
   @Type(() => AddressInfoDto)

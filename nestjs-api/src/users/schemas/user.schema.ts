@@ -54,16 +54,8 @@ export class User {
   @Prop({ required: true, minlength: 1, maxlength: 100 })
   fullName: string;
 
-  // Company/Affiliation fields for flexible identity model
-  // Allows multiple companies within the same Fabric organization
-  @Prop({ index: true })
-  companyId?: string; // UUID for the company (e.g., "fedex-123", "amazon-456")
-
-  @Prop({ maxlength: 100 })
-  companyName?: string; // Human-readable name (e.g., "FedEx", "Amazon", "Independent")
-
   @Prop({ default: 'independent', maxlength: 100 })
-  affiliation: string; // Fabric CA affiliation path (e.g., "sellers.amazon", "logistics.fedex")
+  affiliation: string; // Fabric CA affiliation path
 
   @Prop({ type: VehicleInfoSchema })
   vehicleInfo?: VehicleInfo; // For delivery personnel

@@ -33,6 +33,19 @@ export class ShopItemsService {
     return item;
   }
 
+  /**
+   * Public endpoint - returns all active shop items
+   */
+  async findAllPublic(sellerId?: string): Promise<ShopItemDocument[]> {
+    const query: any = { isActive: true };
+    
+    if (sellerId) {
+      query.sellerId = sellerId;
+    }
+
+    return this.shopItemModel.find(query).exec();
+  }
+
   async findAll(
     userId: string,
     userRole: UserRole,

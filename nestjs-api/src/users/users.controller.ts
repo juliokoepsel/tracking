@@ -20,13 +20,18 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser, CurrentUserData } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../common/enums';
+import { InternalApiGuard } from '../auth/guards/internal-api.guard';
+import { CrossOrgVerificationService } from '../auth/cross-org-verification.service';
 
 @Controller('users')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly crossOrgVerificationService: CrossOrgVerificationService,
+  ) {}
 
   @Post()
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)
   async create(@Body() createUserDto: CreateUserDto) {
     const user = await this.usersService.create(createUserDto);
@@ -44,6 +49,7 @@ export class UsersController {
   }
 
   @Get()
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)
   async findAll(
     @Query('role') role?: UserRole,
@@ -71,7 +77,45 @@ export class UsersController {
     };
   }
 
+  /**
+   * Internal endpoint for cross-org delivery person lookup.
+   * Called by other org APIs to list delivery persons for handoff.
+   */
+  @Get('internal/delivery-persons')
+  @UseGuards(InternalApiGuard)
+  async internalFindDeliveryPersons() {
+    const users = await this.usersService.findActiveDeliveryPersons();
+    return {
+      success: true,
+      count: users.length,
+      data: users.map((user) => ({
+        id: user._id,
+        username: user.username,
+        fullName: user.fullName,
+        vehicleInfo: user.vehicleInfo,
+      })),
+    };
+  }
+
+  /**
+   * Internal endpoint for cross-org customer address lookup.
+   * Called by Logistics API to get delivery address for drivers.
+   */
+  @Get('internal/customer-address/:id')
+  @UseGuards(InternalApiGuard)
+  async internalGetCustomerAddress(@Param('id') id: string) {
+    const addressInfo = await this.usersService.getDeliveryAddress(id);
+    if (!addressInfo) {
+      return { success: false, message: 'Customer address not found' };
+    }
+    return {
+      success: true,
+      data: addressInfo,
+    };
+  }
+
   @Get('me')
+  @UseGuards(AuthGuard('jwt'))
   async getMe(@CurrentUser() user: CurrentUserData) {
     const fullUser = await this.usersService.findById(user.id);
     return {
@@ -90,23 +134,41 @@ export class UsersController {
     };
   }
 
+  /**
+   * Get delivery persons - fetches from Logistics API if not local.
+   * Sellers use this to list available drivers for handoff.
+   */
   @Get('delivery-persons')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.SELLER, UserRole.DELIVERY_PERSON, UserRole.ADMIN)
   async findDeliveryPersons() {
-    const users = await this.usersService.findActiveDeliveryPersons();
+    // First try local delivery persons
+    const localUsers = await this.usersService.findActiveDeliveryPersons();
+    
+    if (localUsers.length > 0) {
+      return {
+        success: true,
+        count: localUsers.length,
+        data: localUsers.map((user) => ({
+          id: user._id,
+          username: user.username,
+          fullName: user.fullName,
+          vehicleInfo: user.vehicleInfo,
+        })),
+      };
+    }
+
+    // If no local delivery persons, fetch from Logistics API (cross-org)
+    const remoteUsers = await this.crossOrgVerificationService.fetchDeliveryPersons();
     return {
       success: true,
-      count: users.length,
-      data: users.map((user) => ({
-        id: user._id,
-        username: user.username,
-        fullName: user.fullName,
-        vehicleInfo: user.vehicleInfo,
-      })),
+      count: remoteUsers.length,
+      data: remoteUsers,
     };
   }
 
   @Get(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)
   async findOne(@Param('id') id: string) {
     const user = await this.usersService.findById(id);
@@ -132,6 +194,7 @@ export class UsersController {
   }
 
   @Put(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     const user = await this.usersService.update(id, updateUserDto);
@@ -150,6 +213,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async deactivate(@Param('id') id: string) {

@@ -41,11 +41,18 @@ Thumbs.db
 # Fabric Network
 fabric-network/organizations/peerOrganizations/
 fabric-network/organizations/ordererOrganizations/
+fabric-network/organizations/fabric-ca/
 fabric-network/channel-artifacts/
 fabric-network/system-genesis-block/
 *.tar.gz
 *.block
 *.tx
+
+# Generated TLS Certificates
+certs/
+
+# Build output
+dist/
 
 # Wallets and Credentials
 wallet/
@@ -75,3 +82,8 @@ logs/
 *.test
 *.out
 vendor/
+chaincode/delivery/delivery
+
+
+# Node modules
+node_modules/

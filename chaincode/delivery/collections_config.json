@@ -1,0 +1,14 @@
+[
+  {
+    "name": "deliveryPrivateDetails",
+    "policy": "OR('PlatformOrgMSP.member', 'SellersOrgMSP.member', 'LogisticsOrgMSP.member')",
+    "requiredPeerCount": 1,
+    "maxPeerCount": 3,
+    "blockToLive": 0,
+    "memberOnlyRead": true,
+    "memberOnlyWrite": true,
+    "endorsementPolicy": {
+      "signaturePolicy": "OR('PlatformOrgMSP.member', 'SellersOrgMSP.member')"
+    }
+  }
+]

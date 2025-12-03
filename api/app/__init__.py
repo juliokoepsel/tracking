@@ -1,3 +1,0 @@
-"""
-API Application Initialization
-"""

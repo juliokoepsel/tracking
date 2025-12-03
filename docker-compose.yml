@@ -1,16 +1,44 @@
+################################################################################
+#
+#   Multi-Org Delivery Tracking Network (Decentralized Architecture)
+#
+#   - 3 Orderers (Raft consensus)
+#   - 3 Peer Organizations: PlatformOrg, SellersOrg, LogisticsOrg
+#   - 3 Fabric CAs (one per org)
+#   - 3 CouchDB databases (one per peer for rich queries)
+#   - 3 MongoDB instances (one per org for wallet/user storage)
+#   - 3 NestJS API instances (one per org)
+#
+################################################################################
+
 volumes:
-  orderer.example.com:
-  peer0.delivery.example.com:
-  mongodb_data:
+  orderer1.orderer.example.com:
+  orderer2.orderer.example.com:
+  orderer3.orderer.example.com:
+  peer0.platform.example.com:
+  peer0.sellers.example.com:
+  peer0.logistics.example.com:
+  ca.platform.example.com:
+  ca.sellers.example.com:
+  ca.logistics.example.com:
+  couchdb.platform:
+  couchdb.sellers:
+  couchdb.logistics:
+  # Decentralized MongoDB volumes (one per org)
+  mongodb_platform_data:
+  mongodb_sellers_data:
+  mongodb_logistics_data:
 
 networks:
-  fabric-delivery-network:
-    name: fabric-delivery-network
+  delivery-network:
+    name: delivery-network
 
 services:
-  # Orderer Service
-  orderer.example.com:
-    container_name: orderer.example.com
+  #=============================================================================
+  # Orderer Nodes (Raft Consensus)
+  #=============================================================================
+  orderer1.orderer.example.com:
+    container_name: orderer1.orderer.example.com
     image: hyperledger/fabric-orderer:2.5
     environment:
       - FABRIC_LOGGING_SPEC=INFO
@@ -22,8 +50,10 @@ services:
       - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
       - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
       - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
-      - ORDERER_GENERAL_BOOTSTRAPMETHOD=file
-      - ORDERER_GENERAL_BOOTSTRAPFILE=/var/hyperledger/orderer/orderer.genesis.block
+      - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=none
       - ORDERER_CHANNELPARTICIPATION_ENABLED=true
       - ORDERER_ADMIN_TLS_ENABLED=true
       - ORDERER_ADMIN_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
@@ -31,59 +61,351 @@ services:
       - ORDERER_ADMIN_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
       - ORDERER_ADMIN_TLS_CLIENTROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
       - ORDERER_ADMIN_LISTENADDRESS=0.0.0.0:7053
-    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    working_dir: /root
     command: orderer
     volumes:
-      - ./fabric-network/system-genesis-block/genesis.block:/var/hyperledger/orderer/orderer.genesis.block
-      - ./fabric-network/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp:/var/hyperledger/orderer/msp
-      - ./fabric-network/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/tls:/var/hyperledger/orderer/tls
-      - orderer.example.com:/var/hyperledger/production/orderer
+      - ./fabric-network/organizations/ordererOrganizations/orderer.example.com/orderers/orderer1.orderer.example.com/msp:/var/hyperledger/orderer/msp
+      - ./fabric-network/organizations/ordererOrganizations/orderer.example.com/orderers/orderer1.orderer.example.com/tls:/var/hyperledger/orderer/tls
+      - ./fabric-network/channel-artifacts:/fabric-network/channel-artifacts
+      - orderer1.orderer.example.com:/var/hyperledger/production/orderer
     ports:
       - 7050:7050
       - 7053:7053
     networks:
-      - fabric-delivery-network
+      - delivery-network
 
-  # Peer0 for DeliveryOrg
-  peer0.delivery.example.com:
-    container_name: peer0.delivery.example.com
+  orderer2.orderer.example.com:
+    container_name: orderer2.orderer.example.com
+    image: hyperledger/fabric-orderer:2.5
+    environment:
+      - FABRIC_LOGGING_SPEC=INFO
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+      - ORDERER_GENERAL_TLS_ENABLED=true
+      - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=none
+      - ORDERER_CHANNELPARTICIPATION_ENABLED=true
+      - ORDERER_ADMIN_TLS_ENABLED=true
+      - ORDERER_ADMIN_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_ADMIN_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_ADMIN_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_ADMIN_TLS_CLIENTROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_ADMIN_LISTENADDRESS=0.0.0.0:7053
+    working_dir: /root
+    command: orderer
+    volumes:
+      - ./fabric-network/organizations/ordererOrganizations/orderer.example.com/orderers/orderer2.orderer.example.com/msp:/var/hyperledger/orderer/msp
+      - ./fabric-network/organizations/ordererOrganizations/orderer.example.com/orderers/orderer2.orderer.example.com/tls:/var/hyperledger/orderer/tls
+      - ./fabric-network/channel-artifacts:/fabric-network/channel-artifacts
+      - orderer2.orderer.example.com:/var/hyperledger/production/orderer
+    ports:
+      - 7150:7050
+      - 7153:7053
+    networks:
+      - delivery-network
+
+  orderer3.orderer.example.com:
+    container_name: orderer3.orderer.example.com
+    image: hyperledger/fabric-orderer:2.5
+    environment:
+      - FABRIC_LOGGING_SPEC=INFO
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      - ORDERER_GENERAL_LISTENPORT=7050
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
+      - ORDERER_GENERAL_TLS_ENABLED=true
+      - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=none
+      - ORDERER_CHANNELPARTICIPATION_ENABLED=true
+      - ORDERER_ADMIN_TLS_ENABLED=true
+      - ORDERER_ADMIN_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_ADMIN_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_ADMIN_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_ADMIN_TLS_CLIENTROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_ADMIN_LISTENADDRESS=0.0.0.0:7053
+    working_dir: /root
+    command: orderer
+    volumes:
+      - ./fabric-network/organizations/ordererOrganizations/orderer.example.com/orderers/orderer3.orderer.example.com/msp:/var/hyperledger/orderer/msp
+      - ./fabric-network/organizations/ordererOrganizations/orderer.example.com/orderers/orderer3.orderer.example.com/tls:/var/hyperledger/orderer/tls
+      - ./fabric-network/channel-artifacts:/fabric-network/channel-artifacts
+      - orderer3.orderer.example.com:/var/hyperledger/production/orderer
+    ports:
+      - 7250:7050
+      - 7253:7053
+    networks:
+      - delivery-network
+
+  #=============================================================================
+  # Fabric CAs (one per organization) - Using cryptogen CA keys
+  #=============================================================================
+  ca.platform.example.com:
+    container_name: ca.platform.example.com
+    image: hyperledger/fabric-ca:1.5
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca-platform
+      - FABRIC_CA_SERVER_TLS_ENABLED=true
+      - FABRIC_CA_SERVER_PORT=7054
+      - FABRIC_CA_SERVER_OPERATIONS_LISTENADDRESS=0.0.0.0:17054
+      - FABRIC_CA_SERVER_CA_CERTFILE=/etc/hyperledger/fabric-ca-server-config/ca.platform.example.com-cert.pem
+      - FABRIC_CA_SERVER_CA_KEYFILE=/etc/hyperledger/fabric-ca-server-config/priv_sk
+      - FABRIC_CA_SERVER_TLS_CERTFILE=/etc/hyperledger/fabric-ca-server-tls/tlsca.platform.example.com-cert.pem
+      - FABRIC_CA_SERVER_TLS_KEYFILE=/etc/hyperledger/fabric-ca-server-tls/priv_sk
+    ports:
+      - "7054:7054"
+      - "17054:17054"
+    command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
+    volumes:
+      - ./fabric-network/organizations/fabric-ca/platform:/etc/hyperledger/fabric-ca-server
+      - ./fabric-network/organizations/peerOrganizations/platform.example.com/ca:/etc/hyperledger/fabric-ca-server-config
+      - ./fabric-network/organizations/peerOrganizations/platform.example.com/tlsca:/etc/hyperledger/fabric-ca-server-tls
+    networks:
+      - delivery-network
+
+  ca.sellers.example.com:
+    container_name: ca.sellers.example.com
+    image: hyperledger/fabric-ca:1.5
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca-sellers
+      - FABRIC_CA_SERVER_TLS_ENABLED=true
+      - FABRIC_CA_SERVER_PORT=7054
+      - FABRIC_CA_SERVER_OPERATIONS_LISTENADDRESS=0.0.0.0:17054
+      - FABRIC_CA_SERVER_CA_CERTFILE=/etc/hyperledger/fabric-ca-server-config/ca.sellers.example.com-cert.pem
+      - FABRIC_CA_SERVER_CA_KEYFILE=/etc/hyperledger/fabric-ca-server-config/priv_sk
+      - FABRIC_CA_SERVER_TLS_CERTFILE=/etc/hyperledger/fabric-ca-server-tls/tlsca.sellers.example.com-cert.pem
+      - FABRIC_CA_SERVER_TLS_KEYFILE=/etc/hyperledger/fabric-ca-server-tls/priv_sk
+    ports:
+      - "8054:7054"
+      - "18054:17054"
+    command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
+    volumes:
+      - ./fabric-network/organizations/fabric-ca/sellers:/etc/hyperledger/fabric-ca-server
+      - ./fabric-network/organizations/peerOrganizations/sellers.example.com/ca:/etc/hyperledger/fabric-ca-server-config
+      - ./fabric-network/organizations/peerOrganizations/sellers.example.com/tlsca:/etc/hyperledger/fabric-ca-server-tls
+    networks:
+      - delivery-network
+
+  ca.logistics.example.com:
+    container_name: ca.logistics.example.com
+    image: hyperledger/fabric-ca:1.5
+    environment:
+      - FABRIC_CA_HOME=/etc/hyperledger/fabric-ca-server
+      - FABRIC_CA_SERVER_CA_NAME=ca-logistics
+      - FABRIC_CA_SERVER_TLS_ENABLED=true
+      - FABRIC_CA_SERVER_PORT=7054
+      - FABRIC_CA_SERVER_OPERATIONS_LISTENADDRESS=0.0.0.0:17054
+      - FABRIC_CA_SERVER_CA_CERTFILE=/etc/hyperledger/fabric-ca-server-config/ca.logistics.example.com-cert.pem
+      - FABRIC_CA_SERVER_CA_KEYFILE=/etc/hyperledger/fabric-ca-server-config/priv_sk
+      - FABRIC_CA_SERVER_TLS_CERTFILE=/etc/hyperledger/fabric-ca-server-tls/tlsca.logistics.example.com-cert.pem
+      - FABRIC_CA_SERVER_TLS_KEYFILE=/etc/hyperledger/fabric-ca-server-tls/priv_sk
+    ports:
+      - "9054:7054"
+      - "19054:17054"
+    command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
+    volumes:
+      - ./fabric-network/organizations/fabric-ca/logistics:/etc/hyperledger/fabric-ca-server
+      - ./fabric-network/organizations/peerOrganizations/logistics.example.com/ca:/etc/hyperledger/fabric-ca-server-config
+      - ./fabric-network/organizations/peerOrganizations/logistics.example.com/tlsca:/etc/hyperledger/fabric-ca-server-tls
+    networks:
+      - delivery-network
+
+  #=============================================================================
+  # CouchDB Databases (State Database for Rich Queries)
+  #=============================================================================
+  couchdb.platform:
+    container_name: couchdb.platform
+    image: couchdb:3.3
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    volumes:
+      - couchdb.platform:/opt/couchdb/data
+    networks:
+      - delivery-network
+
+  couchdb.sellers:
+    container_name: couchdb.sellers
+    image: couchdb:3.3
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    volumes:
+      - couchdb.sellers:/opt/couchdb/data
+    networks:
+      - delivery-network
+
+  couchdb.logistics:
+    container_name: couchdb.logistics
+    image: couchdb:3.3
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=adminpw
+    volumes:
+      - couchdb.logistics:/opt/couchdb/data
+    networks:
+      - delivery-network
+
+  #=============================================================================
+  # Peer Nodes
+  #=============================================================================
+  peer0.platform.example.com:
+    container_name: peer0.platform.example.com
     image: hyperledger/fabric-peer:2.5
     environment:
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
-      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=fabric-delivery-network
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=delivery-network
       - FABRIC_LOGGING_SPEC=INFO
       - CORE_PEER_TLS_ENABLED=true
       - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
       - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
       - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
       - CORE_PEER_PROFILE_ENABLED=false
-      - CORE_PEER_ADDRESSAUTODETECT=false
-      - CORE_PEER_ID=peer0.delivery.example.com
-      - CORE_PEER_ADDRESS=peer0.delivery.example.com:7051
+      - CORE_PEER_ID=peer0.platform.example.com
+      - CORE_PEER_ADDRESS=peer0.platform.example.com:7051
       - CORE_PEER_LISTENADDRESS=0.0.0.0:7051
-      - CORE_PEER_CHAINCODEADDRESS=peer0.delivery.example.com:7052
+      - CORE_PEER_CHAINCODEADDRESS=peer0.platform.example.com:7052
       - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
-      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.delivery.example.com:7051
-      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.delivery.example.com:7051
-      - CORE_PEER_LOCALMSPID=DeliveryOrgMSP
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.platform.example.com:7051
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.platform.example.com:7051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_PEER_LOCALMSPID=PlatformOrgMSP
       - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9444
       - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      # CouchDB State Database Configuration
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb.platform:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
     volumes:
       - /var/run/docker.sock:/host/var/run/docker.sock
-      - ./fabric-network/organizations/peerOrganizations/delivery.example.com/peers/peer0.delivery.example.com/msp:/etc/hyperledger/fabric/msp
-      - ./fabric-network/organizations/peerOrganizations/delivery.example.com/peers/peer0.delivery.example.com/tls:/etc/hyperledger/fabric/tls
-      - peer0.delivery.example.com:/var/hyperledger/production
+      - ./fabric-network/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/msp:/etc/hyperledger/fabric/msp
+      - ./fabric-network/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls:/etc/hyperledger/fabric/tls
+      - peer0.platform.example.com:/var/hyperledger/production
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
     command: peer node start
     ports:
       - 7051:7051
       - 9444:9444
     networks:
-      - fabric-delivery-network
+      - delivery-network
     depends_on:
-      - orderer.example.com
+      - couchdb.platform
+      - orderer1.orderer.example.com
+      - orderer2.orderer.example.com
+      - orderer3.orderer.example.com
 
-  # CLI Tool for interacting with the network
+  peer0.sellers.example.com:
+    container_name: peer0.sellers.example.com
+    image: hyperledger/fabric-peer:2.5
+    environment:
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=delivery-network
+      - FABRIC_LOGGING_SPEC=INFO
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_PROFILE_ENABLED=false
+      - CORE_PEER_ID=peer0.sellers.example.com
+      - CORE_PEER_ADDRESS=peer0.sellers.example.com:8051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:8051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.sellers.example.com:8052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:8052
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.sellers.example.com:8051
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.sellers.example.com:8051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_PEER_LOCALMSPID=SellersOrgMSP
+      - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9445
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      # CouchDB State Database Configuration
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb.sellers:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - ./fabric-network/organizations/peerOrganizations/sellers.example.com/peers/peer0.sellers.example.com/msp:/etc/hyperledger/fabric/msp
+      - ./fabric-network/organizations/peerOrganizations/sellers.example.com/peers/peer0.sellers.example.com/tls:/etc/hyperledger/fabric/tls
+      - peer0.sellers.example.com:/var/hyperledger/production
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: peer node start
+    ports:
+      - 8051:8051
+      - 9445:9445
+    networks:
+      - delivery-network
+    depends_on:
+      - couchdb.sellers
+      - orderer1.orderer.example.com
+      - orderer2.orderer.example.com
+      - orderer3.orderer.example.com
+
+  peer0.logistics.example.com:
+    container_name: peer0.logistics.example.com
+    image: hyperledger/fabric-peer:2.5
+    environment:
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=delivery-network
+      - FABRIC_LOGGING_SPEC=INFO
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_PROFILE_ENABLED=false
+      - CORE_PEER_ID=peer0.logistics.example.com
+      - CORE_PEER_ADDRESS=peer0.logistics.example.com:9051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:9051
+      - CORE_PEER_CHAINCODEADDRESS=peer0.logistics.example.com:9052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:9052
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.logistics.example.com:9051
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.logistics.example.com:9051
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_PEER_LOCALMSPID=LogisticsOrgMSP
+      - CORE_OPERATIONS_LISTENADDRESS=0.0.0.0:9446
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+      # CouchDB State Database Configuration
+      - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb.logistics:5984
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=admin
+      - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=adminpw
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - ./fabric-network/organizations/peerOrganizations/logistics.example.com/peers/peer0.logistics.example.com/msp:/etc/hyperledger/fabric/msp
+      - ./fabric-network/organizations/peerOrganizations/logistics.example.com/peers/peer0.logistics.example.com/tls:/etc/hyperledger/fabric/tls
+      - peer0.logistics.example.com:/var/hyperledger/production
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: peer node start
+    ports:
+      - 9051:9051
+      - 9446:9446
+    networks:
+      - delivery-network
+    depends_on:
+      - couchdb.logistics
+      - orderer1.orderer.example.com
+      - orderer2.orderer.example.com
+      - orderer3.orderer.example.com
+
+  #=============================================================================
+  # CLI Tool
+  #=============================================================================
   cli:
     container_name: cli
     image: hyperledger/fabric-tools:2.5
@@ -94,14 +416,13 @@ services:
       - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
       - FABRIC_LOGGING_SPEC=INFO
       - CORE_PEER_ID=cli
-      - CORE_PEER_ADDRESS=peer0.delivery.example.com:7051
-      - CORE_PEER_LOCALMSPID=DeliveryOrgMSP
+      - CORE_PEER_ADDRESS=peer0.platform.example.com:7051
+      - CORE_PEER_LOCALMSPID=PlatformOrgMSP
       - CORE_PEER_TLS_ENABLED=true
-      - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/delivery.example.com/peers/peer0.delivery.example.com/tls/server.crt
-      - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/delivery.example.com/peers/peer0.delivery.example.com/tls/server.key
-      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/delivery.example.com/peers/peer0.delivery.example.com/tls/ca.crt
-      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/delivery.example.com/users/Admin@delivery.example.com/msp
-      - ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+      - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/peers/peer0.platform.example.com/tls/ca.crt
+      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/platform.example.com/users/Admin@platform.example.com/msp
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
     command: /bin/bash
     volumes:
@@ -111,63 +432,300 @@ services:
       - ./fabric-network/channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
       - ./fabric-network/scripts:/opt/gopath/src/github.com/hyperledger/fabric/peer/scripts
     depends_on:
-      - peer0.delivery.example.com
+      - peer0.platform.example.com
+      - peer0.sellers.example.com
+      - peer0.logistics.example.com
     networks:
-      - fabric-delivery-network
+      - delivery-network
 
-  # MongoDB for off-chain data (users, orders)
-  mongodb:
-    container_name: delivery-mongodb
-    image: l33tlamer/mongodb-without-avx:latest
+  #=============================================================================
+  # MongoDB Instances (Decentralized - One per Organization)
+  #=============================================================================
+  
+  # PlatformOrg MongoDB - Stores Platform users (Admins, Customers)
+  mongodb-platform:
+    container_name: mongodb-platform
+    image: mongo:7
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
       - MONGO_INITDB_DATABASE=${MONGO_DB}
+    command:
+      - mongod
+      - --tlsMode=requireTLS
+      - --tlsCertificateKeyFile=/etc/ssl/mongodb-combined.pem
+      - --tlsCAFile=/etc/ssl/ca.pem
+      - --tlsAllowConnectionsWithoutCertificates
     ports:
-      - "${MONGO_PORT}:27017"
+      - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
-      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+      - mongodb_platform_data:/data/db
+      - ./certs/mongodb-combined.pem:/etc/ssl/mongodb-combined.pem:ro
+      - ./certs/ca.pem:/etc/ssl/ca.pem:ro
     networks:
-      - fabric-delivery-network
+      - delivery-network
     healthcheck:
-      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--tls", "--tlsAllowInvalidCertificates", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # FastAPI Application
-  api:
-    container_name: delivery-api
+  # SellersOrg MongoDB - Stores Seller users
+  mongodb-sellers:
+    container_name: mongodb-sellers
+    image: mongo:7
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DB}
+    command:
+      - mongod
+      - --tlsMode=requireTLS
+      - --tlsCertificateKeyFile=/etc/ssl/mongodb-combined.pem
+      - --tlsCAFile=/etc/ssl/ca.pem
+      - --tlsAllowConnectionsWithoutCertificates
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_sellers_data:/data/db
+      - ./certs/mongodb-combined.pem:/etc/ssl/mongodb-combined.pem:ro
+      - ./certs/ca.pem:/etc/ssl/ca.pem:ro
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--tls", "--tlsAllowInvalidCertificates", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LogisticsOrg MongoDB - Stores Delivery Personnel users
+  mongodb-logistics:
+    container_name: mongodb-logistics
+    image: mongo:7
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DB}
+    command:
+      - mongod
+      - --tlsMode=requireTLS
+      - --tlsCertificateKeyFile=/etc/ssl/mongodb-combined.pem
+      - --tlsCAFile=/etc/ssl/ca.pem
+      - --tlsAllowConnectionsWithoutCertificates
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongodb_logistics_data:/data/db
+      - ./certs/mongodb-combined.pem:/etc/ssl/mongodb-combined.pem:ro
+      - ./certs/ca.pem:/etc/ssl/ca.pem:ro
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--tls", "--tlsAllowInvalidCertificates", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  #=============================================================================
+  # NestJS APIs (Decentralized - One per Organization)
+  #=============================================================================
+  
+  # PlatformOrg API - Serves Admins and Customers
+  api-platform:
+    container_name: api-platform
     build:
-      context: ./api
+      context: ./nestjs-api
       dockerfile: Dockerfile
     environment:
-      - API_HOST=${API_HOST}
-      - API_PORT=${API_PORT}
+      - NODE_ENV=production
+      - PORT=3000
+      # Organization Configuration (Decentralized Mode)
+      - ORG_NAME=PlatformOrg
+      - ORG_MSP_ID=PlatformOrgMSP
+      # MongoDB (TLS) - Platform's database
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb-platform:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+      # Fabric Network
       - CHANNEL_NAME=${CHANNEL_NAME}
       - CHAINCODE_NAME=${CHAINCODE_NAME}
-      - ORG_MSP_ID=${ORG_MSP_ID}
-      - PEER_ADDRESS=peer0.delivery.example.com:7051
-      - MONGO_HOST=mongodb
-      - MONGO_PORT=27017
-      - MONGO_USER=${MONGO_ROOT_USER}
-      - MONGO_PASSWORD=${MONGO_ROOT_PASSWORD}
-      - MONGO_DB=${MONGO_DB}
+      - FABRIC_CRYPTO_PATH=/app/organizations
+      - DISCOVERY_AS_LOCALHOST=false
+      # Peer Endpoints (all peers needed for discovery)
+      - PEER_PLATFORM_ENDPOINT=peer0.platform.example.com:7051
+      - PEER_SELLERS_ENDPOINT=peer0.sellers.example.com:8051
+      - PEER_LOGISTICS_ENDPOINT=peer0.logistics.example.com:9051
+      # CA Endpoints (only Platform CA needed)
+      - CA_PLATFORM_HOST=ca.platform.example.com
+      - CA_PLATFORM_PORT=7054
+      - CA_SELLERS_HOST=ca.sellers.example.com
+      - CA_SELLERS_PORT=7054
+      - CA_LOGISTICS_HOST=ca.logistics.example.com
+      - CA_LOGISTICS_PORT=7054
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      # Internal API Key for cross-org verification
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # Wallet Encryption (Platform's key)
+      - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_PLATFORM}
+      # SSL Certs
+      - SSL_CERT_PATH=/app/certs/nestjs.pem
+      - SSL_KEY_PATH=/app/certs/nestjs-key.pem
     ports:
-      - "${API_PORT}:8000"
+      - "3001:3000"
     volumes:
-      - ./api:/app
-      - ./ui:/ui
-      - ./fabric-network/organizations:/app/organizations
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./fabric-network/organizations:/app/organizations:ro
+      - ./certs:/app/certs:ro
     depends_on:
-      mongodb:
+      mongodb-platform:
         condition: service_healthy
-      peer0.delivery.example.com:
+      peer0.platform.example.com:
         condition: service_started
-      cli:
+      ca.platform.example.com:
         condition: service_started
     networks:
-      - fabric-delivery-network
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "-q", "https://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SellersOrg API - Serves Sellers
+  api-sellers:
+    container_name: api-sellers
+    build:
+      context: ./nestjs-api
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Organization Configuration (Decentralized Mode)
+      - ORG_NAME=SellersOrg
+      - ORG_MSP_ID=SellersOrgMSP
+      # MongoDB (TLS) - Sellers' database
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb-sellers:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+      # Fabric Network
+      - CHANNEL_NAME=${CHANNEL_NAME}
+      - CHAINCODE_NAME=${CHAINCODE_NAME}
+      - FABRIC_CRYPTO_PATH=/app/organizations
+      - DISCOVERY_AS_LOCALHOST=false
+      # Peer Endpoints (all peers needed for discovery)
+      - PEER_PLATFORM_ENDPOINT=peer0.platform.example.com:7051
+      - PEER_SELLERS_ENDPOINT=peer0.sellers.example.com:8051
+      - PEER_LOGISTICS_ENDPOINT=peer0.logistics.example.com:9051
+      # CA Endpoints (only Sellers CA needed)
+      - CA_PLATFORM_HOST=ca.platform.example.com
+      - CA_PLATFORM_PORT=7054
+      - CA_SELLERS_HOST=ca.sellers.example.com
+      - CA_SELLERS_PORT=7054
+      - CA_LOGISTICS_HOST=ca.logistics.example.com
+      - CA_LOGISTICS_PORT=7054
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      # Internal API Key for cross-org verification
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # Wallet Encryption (Sellers' key)
+      - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_SELLERS}
+      # SSL Certs
+      - SSL_CERT_PATH=/app/certs/nestjs.pem
+      - SSL_KEY_PATH=/app/certs/nestjs-key.pem
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./fabric-network/organizations:/app/organizations:ro
+      - ./certs:/app/certs:ro
+    depends_on:
+      mongodb-sellers:
+        condition: service_healthy
+      peer0.sellers.example.com:
+        condition: service_started
+      ca.sellers.example.com:
+        condition: service_started
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "-q", "https://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LogisticsOrg API - Serves Delivery Personnel
+  api-logistics:
+    container_name: api-logistics
+    build:
+      context: ./nestjs-api
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Organization Configuration (Decentralized Mode)
+      - ORG_NAME=LogisticsOrg
+      - ORG_MSP_ID=LogisticsOrgMSP
+      # MongoDB (TLS) - Logistics' database
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongodb-logistics:27017/${MONGO_DB}?authSource=admin&tls=true&tlsAllowInvalidCertificates=true
+      # Fabric Network
+      - CHANNEL_NAME=${CHANNEL_NAME}
+      - CHAINCODE_NAME=${CHAINCODE_NAME}
+      - FABRIC_CRYPTO_PATH=/app/organizations
+      - DISCOVERY_AS_LOCALHOST=false
+      # Peer Endpoints (all peers needed for discovery)
+      - PEER_PLATFORM_ENDPOINT=peer0.platform.example.com:7051
+      - PEER_SELLERS_ENDPOINT=peer0.sellers.example.com:8051
+      - PEER_LOGISTICS_ENDPOINT=peer0.logistics.example.com:9051
+      # CA Endpoints (only Logistics CA needed)
+      - CA_PLATFORM_HOST=ca.platform.example.com
+      - CA_PLATFORM_PORT=7054
+      - CA_SELLERS_HOST=ca.sellers.example.com
+      - CA_SELLERS_PORT=7054
+      - CA_LOGISTICS_HOST=ca.logistics.example.com
+      - CA_LOGISTICS_PORT=7054
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      # Internal API Key for cross-org verification
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # Wallet Encryption (Logistics' key)
+      - WALLET_ENCRYPTION_KEY=${WALLET_ENCRYPTION_KEY_LOGISTICS}
+      # SSL Certs
+      - SSL_CERT_PATH=/app/certs/nestjs.pem
+      - SSL_KEY_PATH=/app/certs/nestjs-key.pem
+    ports:
+      - "3003:3000"
+    volumes:
+      - ./fabric-network/organizations:/app/organizations:ro
+      - ./certs:/app/certs:ro
+    depends_on:
+      mongodb-logistics:
+        condition: service_healthy
+      peer0.logistics.example.com:
+        condition: service_started
+      ca.logistics.example.com:
+        condition: service_started
+    networks:
+      - delivery-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "-q", "https://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  #=============================================================================
+  # UI - Static Web Interface (HTTPS)
+  #=============================================================================
+  delivery-ui:
+    container_name: delivery-ui
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "8080:80"
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+      - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      api-platform:
+        condition: service_healthy
+    networks:
+      - delivery-network
+

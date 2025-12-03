@@ -203,6 +203,16 @@ func getCallerIdentity(ctx contractapi.TransactionContextInterface) (*CallerIden
 	}, nil
 }
 
+// getTxTimestamp returns the transaction timestamp from the blockchain
+// This is the authoritative timestamp set by the orderer, not manipulable by clients
+func getTxTimestamp(ctx contractapi.TransactionContextInterface) (string, error) {
+	txTimestamp, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return "", fmt.Errorf("failed to get transaction timestamp: %v", err)
+	}
+	return time.Unix(txTimestamp.Seconds, int64(txTimestamp.Nanos)).UTC().Format(time.RFC3339), nil
+}
+
 // ============================================================================
 // Input Validation Helpers
 // ============================================================================
@@ -636,7 +646,10 @@ func (c *DeliveryContract) CreateDelivery(
 		return fmt.Errorf("delivery %s already exists", deliveryID)
 	}
 
-	currentTime := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 
 	delivery := Delivery{
 		DeliveryID:    deliveryID,
@@ -779,7 +792,11 @@ func (c *DeliveryContract) UpdateLocation(
 		State:   state,
 		Country: country,
 	}
-	delivery.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
+	delivery.UpdatedAt = currentTime
 
 	deliveryJSON, err := json.Marshal(delivery)
 	if err != nil {
@@ -851,7 +868,10 @@ func (c *DeliveryContract) InitiateHandoff(
 		return fmt.Errorf("cannot initiate handoff in current status: %s", delivery.DeliveryStatus)
 	}
 
-	currentTime := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Create pending handoff
 	delivery.PendingHandoff = &PendingHandoff{
@@ -970,7 +990,10 @@ func (c *DeliveryContract) ConfirmHandoff(
 		return fmt.Errorf("only the intended recipient can confirm the handoff")
 	}
 
-	currentTime := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Update custody
 	handoff := delivery.PendingHandoff
@@ -1086,7 +1109,10 @@ func (c *DeliveryContract) DisputeHandoff(
 		return fmt.Errorf("only the intended recipient can dispute the handoff")
 	}
 
-	currentTime := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 	oldStatus := delivery.DeliveryStatus
 
 	// Clear pending handoff
@@ -1176,7 +1202,10 @@ func (c *DeliveryContract) CancelHandoff(
 		return fmt.Errorf("only the handoff initiator can cancel it")
 	}
 
-	currentTime := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 	oldStatus := delivery.DeliveryStatus
 
 	// Clear pending handoff
@@ -1259,7 +1288,10 @@ func (c *DeliveryContract) CancelDelivery(
 		return fmt.Errorf("delivery can only be cancelled before pickup")
 	}
 
-	currentTime := time.Now().UTC().Format(time.RFC3339)
+	currentTime, err := getTxTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 	oldStatus := delivery.DeliveryStatus
 
 	delivery.DeliveryStatus = StatusCancelled
